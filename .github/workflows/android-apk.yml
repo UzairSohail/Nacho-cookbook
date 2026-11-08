@@ -1,7 +1,8 @@
 # Builds an installable Android test APK.
-# Every pull request push, merge to master or manual run publishes it as a
-# GitHub pre-release called "Test build N", with a direct .apk link to open
-# on a phone.
+# Pull requests only check that the APK builds. Each merge to master (or a
+# manual run) publishes it as the one "Test build N" release and deletes the
+# older ones, so this link always downloads the newest APK:
+# https://github.com/UzairSohail/Nacho-cookbook/releases/latest/download/nacho-cookbook.apk
 name: Android test APK
 
 on:
@@ -54,18 +55,34 @@ jobs:
         run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
 
       - name: Name the APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk nacho-cookbook-test-${{ github.run_number }}.apk
+        if: github.event_name != 'pull_request'
+        run: cp android/app/build/outputs/apk/release/app-release.apk nacho-cookbook.apk
 
       # A release rather than a workflow artifact: artifacts count toward the
-      # account's Actions storage quota and download as a zip.
+      # account's Actions storage quota and download as a zip. Marked as the
+      # latest release so /releases/latest/download/nacho-cookbook.apk works.
       - name: Publish release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: test-build-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           name: Test build ${{ github.run_number }}
-          prerelease: true
+          make_latest: true
           body: |
             Android test build from ${{ github.sha }}.
-            Download the .apk below on your Android phone and open it to install (allow installs from your browser if asked).
-          files: nacho-cookbook-test-${{ github.run_number }}.apk
+            Download nacho-cookbook.apk below on your Android phone and open it to install (allow installs from your browser if asked).
+          files: nacho-cookbook.apk
+
+      # Keep only this build: delete every other test build release and its tag.
+      - name: Delete older test builds
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT: test-build-${{ github.run_number }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName --jq '.[].tagName' \
+            | grep '^test-build-' | grep -vx "$CURRENT" \
+            | while read -r tag; do
+                gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+              done

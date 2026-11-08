@@ -54,5 +54,5 @@ With PowerSync set up, Android needs a development build (`npx expo run:android`
 
 ## Test builds and hosting
 
-- **Android APK:** `.github/workflows/android-apk.yml` builds a test APK on every pull request push and merge and publishes it as a "Test build N" pre-release under GitHub Releases; open that page on the phone and install the `.apk`. It's signed with a debug key, so it's for testing only, and builds for 64-bit ARM phones.
+- **Android APK:** `.github/workflows/android-apk.yml` checks the APK builds on every pull request. Each merge to `master` publishes it as the single "Test build N" release (older ones are deleted), so [this link](https://github.com/UzairSohail/Nacho-cookbook/releases/latest/download/nacho-cookbook.apk) always downloads the newest APK. It's signed with a debug key, so it's for testing only, and builds for 64-bit ARM phones.
 - **Web app:** hosted on Netlify from `master` using `netlify.toml` (`npx expo export --platform web`, published from `dist`, every route falls back to `index.html`). Add the site's address to Supabase under Authentication → URL Configuration (Site URL and Redirect URLs).
