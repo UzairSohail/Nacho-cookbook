@@ -115,6 +115,6 @@ describe('listToText', () => {
       { id: '3', key: 'c', name: 'Eggs', quantity: 6, unit: null, aisle: 'dairy', checked: true, edited: false, sources: [] },
     ];
     const text = listToText(items, (q, u) => `${q}${u ? ` ${u}` : ''}`);
-    expect(text).toBe('Shopping list\n\nProduce\n- 3 cloves Garlic\n\nDairy\n- 1 l Milk');
+    expect(text).toBe('Shopping list\n\nFruit & veg\n- 3 cloves Garlic\n\nDairy & eggs\n- 1 l Milk');
   });
 });

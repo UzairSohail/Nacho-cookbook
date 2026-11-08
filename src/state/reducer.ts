@@ -4,6 +4,7 @@
  * difference to the offline database (see diff.ts).
  */
 import {
+  type Aisle,
   generateShoppingList,
   guessAisle,
   reconcileList,
@@ -52,6 +53,7 @@ export type Action =
   | { type: 'generateList'; range: DateRange }
   | { type: 'toggleItem'; id: string }
   | { type: 'editItem'; id: string; patch: Pick<ListItem, 'name' | 'quantity' | 'unit'> }
+  | { type: 'setItemAisle'; id: string; aisle: Aisle }
   | { type: 'addItem'; name: string }
   | { type: 'deleteItem'; id: string }
   | { type: 'clearChecked' }
@@ -112,11 +114,20 @@ export function reducer(state: State, action: Action): State {
         ...state,
         list: state.list.map((i) => (i.id === action.id ? { ...i, ...action.patch, edited: true } : i)),
       };
+    case 'setItemAisle':
+      return withItemAisle(state, action.id, action.aisle);
     case 'addItem': {
       const name = action.name.trim();
       if (!name) return state;
       const item: ListItem = {
-        id: uuid(), name, quantity: null, unit: null, aisle: 'other', checked: false, edited: false, sources: [],
+        id: uuid(),
+        name,
+        quantity: null,
+        unit: null,
+        aisle: ingredientByName(state, name)?.aisle ?? guessAisle(name),
+        checked: false,
+        edited: false,
+        sources: [],
       };
       return { ...state, list: [...state.list, item] };
     }
@@ -143,6 +154,36 @@ export function reducer(state: State, action: Action): State {
         plan: state.plan.filter((e) => e.recipeId !== action.id),
       };
   }
+}
+
+const ingredientByName = (state: State, name: string) => {
+  const key = name.trim().toLowerCase();
+  return state.ingredients.find((i) => i.name.trim().toLowerCase() === key);
+};
+
+/**
+ * Moves a shopping list line to another aisle. When the line is a known
+ * ingredient, the ingredient moves too, so every line for it (and every future
+ * list) uses the new aisle. Moving doesn't count as editing the line, so its
+ * amount still follows the plan.
+ */
+export function withItemAisle(state: State, id: string, aisle: Aisle): State {
+  const item = state.list.find((i) => i.id === id);
+  if (!item) return state;
+  const ingredient = item.key
+    ? state.ingredients.find((i) => i.id === item.key!.split('|')[0])
+    : ingredientByName(state, item.name);
+  if (!ingredient) {
+    return { ...state, list: state.list.map((i) => (i.id === id ? { ...i, aisle } : i)) };
+  }
+  const sameIngredient = (i: ListItem) =>
+    i.id === id ||
+    (i.key ? i.key.split('|')[0] === ingredient.id : i.name.trim().toLowerCase() === ingredient.name.trim().toLowerCase());
+  return {
+    ...state,
+    ingredients: state.ingredients.map((i) => (i.id === ingredient.id ? { ...i, aisle } : i)),
+    list: state.list.map((i) => (sameIngredient(i) ? { ...i, aisle } : i)),
+  };
 }
 
 /** Id for an ingredient first added by name, the same on every device so two people adding "Garlic" offline share a row. */

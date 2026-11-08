@@ -4,7 +4,7 @@
  */
 import { inRange, type DateRange } from './planner';
 import type { Aisle, Ingredient, PlanEntry, Recipe } from './types';
-import { AISLE_ORDER } from './types';
+import { AISLE_LABELS, AISLE_ORDER } from './types';
 import { bestUnit, dimensionOf, parseUnit, toBase, type KnownUnit, type UnitOptions, type UnitSystem } from './units';
 
 export interface GeneratedItem {
@@ -217,11 +217,11 @@ export function listToText(
   let aisle: Aisle | null = null;
   const sorted = [...items]
     .filter((i) => !i.checked)
-    .sort((a, b) => AISLE_ORDER.indexOf(a.aisle) - AISLE_ORDER.indexOf(b.aisle));
+    .sort((a, b) => AISLE_ORDER.indexOf(a.aisle) - AISLE_ORDER.indexOf(b.aisle) || a.name.localeCompare(b.name));
   for (const item of sorted) {
     if (item.aisle !== aisle) {
       aisle = item.aisle;
-      lines.push('', aisle[0].toUpperCase() + aisle.slice(1));
+      lines.push('', AISLE_LABELS[aisle] ?? 'Other');
     }
     const amount = item.quantity == null ? '' : `${formatQuantity(item.quantity, item.unit)} `;
     lines.push(`- ${amount}${item.name}`);

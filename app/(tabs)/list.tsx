@@ -4,6 +4,7 @@ import { Pressable, ScrollView, Share, StyleSheet, View as RNView } from 'react-
 import { Button, Card, Chip, Text, TextInput, useTheme } from '@/components/Themed';
 import {
   addDays,
+  AISLE_LABELS,
   AISLE_ORDER,
   formatAmount,
   fortnightDates,
@@ -59,7 +60,15 @@ export default function ShoppingListScreen() {
     Share.share({ message: listToText(state.list, (q, u) => amount(q, u)) }).catch(() => {});
   };
 
-  const aisles = AISLE_ORDER.filter((a) => state.list.some((i) => i.aisle === a));
+  // Unknown aisle names from older rows land in Other rather than vanishing.
+  const aisleOf = (item: ListItem) => (AISLE_ORDER.includes(item.aisle) ? item.aisle : 'other');
+  const aisles = AISLE_ORDER.filter((a) => state.list.some((i) => aisleOf(i) === a));
+  // Within an aisle, things still to get come first, then what's already in the trolley.
+  const inAisle = (aisle: string) =>
+    state.list
+      .filter((i) => aisleOf(i) === aisle)
+      .sort((a, b) => Number(a.checked) - Number(b.checked) || a.name.localeCompare(b.name));
+  const tickedCount = state.list.filter((i) => i.checked).length;
   // Generated lines are keyed "<ingredient id>|<kind>", so staples can be flagged without storing anything extra.
   const staples = new Set(state.pantry);
   const isStaple = (item: ListItem) => !!item.key && staples.has(item.key.split('|')[0]);
@@ -103,13 +112,34 @@ export default function ShoppingListScreen() {
         <Button title="Add" onPress={addItem} />
       </RNView>
 
-      {aisles.map((aisle) => (
-        <RNView key={aisle} style={styles.gap}>
-          <Text variant="label">{aisle.toUpperCase()}</Text>
-          <Card style={{ paddingVertical: 4 }}>
-            {state.list
-              .filter((i) => i.aisle === aisle)
-              .map((item) => (
+      {state.list.length ? (
+        <RNView style={styles.gap}>
+          <Text variant="muted" accessibilityLiveRegion="polite">
+            {tickedCount === state.list.length
+              ? `All ${state.list.length} ticked off. Nice work!`
+              : `${tickedCount} of ${state.list.length} ticked off`}
+          </Text>
+          <RNView style={[styles.progress, { backgroundColor: c.border }]}>
+            <RNView
+              style={[styles.progressFill, { backgroundColor: c.accent, width: `${(tickedCount / state.list.length) * 100}%` }]}
+            />
+          </RNView>
+        </RNView>
+      ) : null}
+
+      {aisles.map((aisle) => {
+        const items = inAisle(aisle);
+        const left = items.filter((i) => !i.checked).length;
+        return (
+          <RNView key={aisle} style={styles.gap}>
+            <RNView style={styles.aisleHeader}>
+              <Text variant="label" accessibilityRole="header">{AISLE_LABELS[aisle].toUpperCase()}</Text>
+              <Text variant="muted" style={left === 0 ? { color: c.accent } : undefined}>
+                {left === 0 ? 'All done ✓' : `${left} to get`}
+              </Text>
+            </RNView>
+            <Card style={{ paddingVertical: 4 }}>
+              {items.map((item) => (
                 <Row
                   key={item.id}
                   item={item}
@@ -119,9 +149,10 @@ export default function ShoppingListScreen() {
                   onEdit={() => setEditingId(editingId === item.id ? null : item.id)}
                 />
               ))}
-          </Card>
-        </RNView>
-      ))}
+            </Card>
+          </RNView>
+        );
+      })}
 
       {state.list.length ? (
         <RNView style={styles.row}>
@@ -166,6 +197,7 @@ function Row({
           accessibilityState={{ checked: item.checked }}
           accessibilityLabel={item.name}
           onPress={() => dispatch({ type: 'toggleItem', id: item.id })}
+          hitSlop={10}
           style={[styles.check, { borderColor: c.accent, backgroundColor: item.checked ? c.accent : 'transparent' }]}>
           {item.checked ? <Text style={{ color: c.onTint, fontSize: 14 }}>✓</Text> : null}
         </Pressable>
@@ -184,6 +216,22 @@ function Row({
             <TextInput value={qty} onChangeText={setQty} placeholder="Amount" style={{ width: 90 }} />
             <TextInput value={unit} onChangeText={setUnit} placeholder="Unit" style={{ width: 80 }} />
             <TextInput value={name} onChangeText={setName} placeholder="Item" style={{ flex: 1, minWidth: 120 }} />
+          </RNView>
+          <RNView style={styles.gap}>
+            <Text variant="label">AISLE</Text>
+            <RNView style={styles.row}>
+              {AISLE_ORDER.map((a) => (
+                <Chip
+                  key={a}
+                  small
+                  role="radio"
+                  label={AISLE_LABELS[a]}
+                  selected={item.aisle === a}
+                  onPress={() => dispatch({ type: 'setItemAisle', id: item.id, aisle: a })}
+                />
+              ))}
+            </RNView>
+            <Text variant="muted">Moves it straight away. Next time it’s on a list it goes here too.</Text>
           </RNView>
           <RNView style={styles.row}>
             <Button
@@ -211,5 +259,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
   item: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, gap: 8 },
   itemRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  aisleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 },
+  progress: { height: 6, borderRadius: 3, overflow: 'hidden' },
+  progressFill: { height: 6, borderRadius: 3 },
   check: { width: 28, height: 28, borderRadius: 8, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
 });

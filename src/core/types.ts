@@ -18,6 +18,21 @@ export const AISLE_ORDER: Aisle[] = [
   'produce', 'meat', 'seafood', 'dairy', 'bakery', 'pantry', 'spices', 'frozen', 'drinks', 'household', 'other',
 ];
 
+/** What each aisle is called on screen, in Australian supermarket terms. */
+export const AISLE_LABELS: Record<Aisle, string> = {
+  produce: 'Fruit & veg',
+  meat: 'Meat',
+  seafood: 'Seafood',
+  dairy: 'Dairy & eggs',
+  bakery: 'Bakery',
+  pantry: 'Pantry',
+  spices: 'Herbs & spices',
+  frozen: 'Frozen',
+  drinks: 'Drinks',
+  household: 'Household',
+  other: 'Other',
+};
+
 /** A household-wide ingredient record, so lists can merge "plain flour" across recipes. */
 export interface Ingredient {
   id: string;

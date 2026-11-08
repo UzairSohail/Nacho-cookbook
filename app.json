@@ -43,6 +43,17 @@
           "cameraPermission": "Nacho Cookbook uses the camera to take photos of your recipes.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-sharing",
+        {
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": [
+              "text/plain"
+            ]
+          }
+        }
       ]
     ],
     "experiments": {
