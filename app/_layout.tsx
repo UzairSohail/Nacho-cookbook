@@ -8,6 +8,7 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors, { Fonts } from '@/constants/Colors';
+import { AuthProvider, useAuth } from '@/src/backend/auth';
 import { StoreProvider } from '@/src/state/store';
 
 export { ErrorBoundary } from 'expo-router';
@@ -30,14 +31,17 @@ export default function RootLayout() {
   if (!loaded) return null;
 
   return (
-    <StoreProvider>
-      <RootLayoutNav />
-    </StoreProvider>
+    <AuthProvider>
+      <StoreProvider>
+        <RootLayoutNav />
+      </StoreProvider>
+    </AuthProvider>
   );
 }
 
 function RootLayoutNav() {
   const scheme = useColorScheme();
+  const auth = useAuth();
   const c = Colors[scheme];
   const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
   const theme = {
@@ -45,11 +49,24 @@ function RootLayoutNav() {
     colors: { ...base.colors, primary: c.tint, background: c.background, card: c.card, text: c.text, border: c.border },
   };
 
+  if (!auth.ready) return null;
+  // Demo mode (no backend configured) skips sign-in and runs on sample data.
+  const signedIn = auth.demoMode || auth.session != null;
+  const inHousehold = auth.demoMode || auth.household != null;
+
   return (
     <ThemeProvider value={theme}>
       <Stack screenOptions={{ headerTitleStyle: { fontFamily: Fonts.title }, headerTintColor: c.tint }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="recipe/[id]" options={{ title: 'Recipe' }} />
+        <Stack.Protected guard={!signedIn}>
+          <Stack.Screen name="sign-in" options={{ headerShown: false }} />
+        </Stack.Protected>
+        <Stack.Protected guard={signedIn && !inHousehold}>
+          <Stack.Screen name="household" options={{ title: 'Your household' }} />
+        </Stack.Protected>
+        <Stack.Protected guard={signedIn && inHousehold}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="recipe/[id]" options={{ title: 'Recipe' }} />
+        </Stack.Protected>
       </Stack>
     </ThemeProvider>
   );

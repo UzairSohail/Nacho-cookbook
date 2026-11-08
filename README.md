@@ -13,7 +13,15 @@ Requirements: [Cookbook app requirements](https://claude.ai/artifact/EYCQsxYCUjh
 - **Settings:** household size, metric/imperial, your cup and spoon sizes (Australian by default, metric or US), pantry staples.
 - **US recipes:** a recipe can be marked as written with US cups and spoons. Spoons are converted to your sizes (2 US tbsp shows as 1 1/2 Australian tbsp), cups are labelled "US cup", and scaling and the shopping list use the right amounts.
 
-The app currently runs on built-in sample data held in memory. Sign-in, the shared household and offline sync (Supabase + PowerSync) come next; the database schema is in `supabase/schema.sql`.
+**Accounts:** email sign-in, then start a household or join one with an invite code (shown in Settings). Without Supabase settings the app skips sign-in and runs in demo mode on sample data.
+
+Recipes, the plan and the list are still held in memory on each device; syncing them through the household (PowerSync + Supabase) comes next.
+
+## Connecting Supabase
+
+1. Create a Supabase project and run `supabase/schema.sql` in its SQL Editor.
+2. Put the Project URL and publishable key in `.env` (already set for the household project; use `.env.local` to point at another one).
+3. Restart `npm run web` / `npm run android`.
 
 ## Project layout
 
@@ -24,6 +32,7 @@ The app currently runs on built-in sample data held in memory. Sign-in, the shar
 | `constants/Colors.ts` | The cream / tomato / herb green palette, light and dark. |
 | `src/core/` | Pure TypeScript logic: units, fractions, scaling, planner batches, shopping list. No React, fully unit tested. |
 | `src/state/` | App state and sample data. This is where the offline database plugs in. |
+| `src/backend/` | Supabase client and sign-in / household state. |
 | `supabase/schema.sql` | Database tables and row level security for households. |
 
 ## Running it
