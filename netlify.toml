@@ -1,7 +1,11 @@
-# Netlify hosting for the web app: builds on every merge to master.
+# Netlify hosting for the web app. Production deploys cost credits (15 each
+# on the free plan's 300 a month), so scripts/netlify-ignore.sh skips builds
+# for changes that can't affect the web app, and, with WEB_DEPLOY_MODE=batched
+# set in Netlify, leaves publishing to the "Publish web app" GitHub workflow.
 [build]
   command = "npx expo export --platform web"
   publish = "dist"
+  ignore = "bash scripts/netlify-ignore.sh"
 
 [build.environment]
   NODE_VERSION = "22"
