@@ -9,6 +9,7 @@ import {
   fortnightDates,
   listToText,
   parseQuantity,
+  today,
   type DateRange,
   type ListItem,
 } from '@/src/core';
@@ -23,12 +24,29 @@ export default function ShoppingListScreen() {
   const [choice, setChoice] = useState<RangeChoice>('fortnight');
   const [newItem, setNewItem] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
-  const days = fortnightDates(new Date().toISOString().slice(0, 10));
+  const days = fortnightDates(today());
   const ranges: Record<RangeChoice, DateRange> = {
     fortnight: { start: days[0], end: days[13] },
     week1: { start: days[0], end: days[6] },
     week2: { start: days[7], end: addDays(days[7], 6) },
+  };
+
+  const short = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const range = ranges[choice];
+  const rangeText = `${short.format(new Date(range.start))} – ${short.format(new Date(range.end))}`;
+
+  const generate = () => {
+    const planned = state.plan.some((e) => e.recipeId && e.date >= range.start && e.date <= range.end);
+    setNote(planned ? null : `Nothing is planned for ${rangeText} yet. Add meals in the Planner first.`);
+    if (planned) dispatch({ type: 'generateList', range });
+  };
+
+  const addItem = () => {
+    if (!newItem.trim()) return;
+    dispatch({ type: 'addItem', name: newItem });
+    setNewItem('');
   };
 
   const amount = (q: number | null, unit: string | null) => {
@@ -54,7 +72,10 @@ export default function ShoppingListScreen() {
           {(['fortnight', 'week1', 'week2'] as const).map((r) => (
             <Pressable
               key={r}
-              onPress={() => setChoice(r)}
+              onPress={() => {
+                setChoice(r);
+                setNote(null);
+              }}
               style={[styles.chip, { borderColor: c.tint, backgroundColor: choice === r ? c.tint : 'transparent' }]}>
               <Text style={{ color: choice === r ? c.onTint : c.tint, fontSize: 14 }}>
                 {r === 'fortnight' ? 'Whole fortnight' : r === 'week1' ? 'Week 1' : 'Week 2'}
@@ -64,30 +85,23 @@ export default function ShoppingListScreen() {
         </RNView>
         <Button
           title={state.list.length ? 'Update from plan' : 'Generate list'}
-          onPress={() => dispatch({ type: 'generateList', range: ranges[choice] })}
+          onPress={generate}
         />
-        <Text variant="muted">Updating keeps anything you added or changed by hand.</Text>
+        {note ? <Text style={{ color: c.tint }}>{note}</Text> : null}
+        <Text variant="muted">{rangeText}. Updating keeps anything you added or changed by hand.</Text>
       </Card>
 
-      <RNView style={styles.row}>
+      <RNView style={[styles.row, { flexWrap: 'nowrap' }]}>
         <TextInput
           value={newItem}
           onChangeText={setNewItem}
           placeholder="Add an item"
           accessibilityLabel="Add an item"
-          style={{ flex: 1 }}
-          onSubmitEditing={() => {
-            dispatch({ type: 'addItem', name: newItem });
-            setNewItem('');
-          }}
+          style={{ flex: 1, minWidth: 0 }}
+          returnKeyType="done"
+          onSubmitEditing={addItem}
         />
-        <Button
-          title="Add"
-          onPress={() => {
-            dispatch({ type: 'addItem', name: newItem });
-            setNewItem('');
-          }}
-        />
+        <Button title="Add" onPress={addItem} />
       </RNView>
 
       {aisles.map((aisle) => (
@@ -116,7 +130,10 @@ export default function ShoppingListScreen() {
           <Button title="Clear ticked" kind="secondary" onPress={() => dispatch({ type: 'clearChecked' })} />
         </RNView>
       ) : (
-        <Text variant="muted">Your list is empty. Plan some meals, then generate a list.</Text>
+        <Card style={{ gap: 6 }}>
+          <Text variant="heading">Nothing on the list yet</Text>
+          <Text variant="muted">Plan some meals, pick the dates above and tap Generate list. You can add things by hand too.</Text>
+        </Card>
       )}
 
     </ScrollView>
@@ -158,13 +175,8 @@ function Row({
             {amount ? <Text style={{ fontWeight: '600' }}>{amount} </Text> : null}
             {item.name}
           </Text>
-          {item.sources.length || staple ? (
-            <Text variant="muted">
-              {staple ? <Text style={{ color: c.accent }}>Pantry staple, check the cupboard</Text> : null}
-              {staple && item.sources.length ? ' · ' : ''}
-              {item.sources.join(', ')}
-            </Text>
-          ) : null}
+          {staple ? <Text variant="muted" style={{ color: c.accent }}>Pantry staple: check the cupboard first</Text> : null}
+          {item.sources.length ? <Text variant="muted">{item.sources.join(', ')}</Text> : null}
         </Pressable>
       </RNView>
       {editing ? (

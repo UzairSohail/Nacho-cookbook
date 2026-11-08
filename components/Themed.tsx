@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text as DefaultText,
@@ -70,12 +72,27 @@ export function Button({ title, kind = 'primary', style, ...rest }: ButtonProps)
   );
 }
 
-export function TextInput({ style, ...rest }: TextInputProps) {
+export function TextInput({ style, onFocus, onBlur, ...rest }: TextInputProps) {
   const c = useTheme();
+  const [focused, setFocused] = useState(false);
   return (
     <DefaultTextInput
       placeholderTextColor={c.textMuted}
-      style={[styles.input, { color: c.text, borderColor: c.border, backgroundColor: c.card }, style]}
+      onFocus={(e) => {
+        setFocused(true);
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        onBlur?.(e);
+      }}
+      style={[
+        styles.input,
+        { color: c.text, borderColor: focused ? c.tint : c.border, backgroundColor: c.card },
+        // The browser's own black focus ring clashes with the theme; the border shows focus instead.
+        Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null,
+        style,
+      ]}
       {...rest}
     />
   );

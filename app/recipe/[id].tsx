@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
 import { RecipePhoto } from '@/components/RecipePhoto';
 import { Button, Card, Stepper, Text, TextInput, View, useTheme } from '@/components/Themed';
@@ -32,7 +32,12 @@ export default function RecipeScreen() {
   if (!recipe) {
     return (
       <View style={styles.center}>
-        <Text>Recipe not found.</Text>
+        <Stack.Screen options={{ title: 'Recipe' }} />
+        <Text variant="heading">This recipe isn’t here</Text>
+        <Text variant="muted" style={{ textAlign: 'center' }}>
+          It may have been deleted, or it’s still syncing from your household.
+        </Text>
+        <Button title="Back to recipes" onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
       </View>
     );
   }
@@ -214,7 +219,17 @@ export default function RecipeScreen() {
           <Text>{recipe.notes}</Text>
         </RNView>
       ) : null}
-      {recipe.sourceUrl ? <Text variant="muted">Source: {recipe.sourceUrl}</Text> : null}
+      {recipe.sourceUrl ? (
+        <Text variant="muted" numberOfLines={1}>
+          Source:{' '}
+          <Text
+            accessibilityRole="link"
+            style={{ color: c.tint, fontSize: 14 }}
+            onPress={() => Linking.openURL(recipe.sourceUrl!).catch(() => {})}>
+            {siteName(recipe.sourceUrl)}
+          </Text>
+        </Text>
+      ) : null}
 
       <Button title="Edit recipe" kind="secondary" onPress={editRecipe} />
     </ScrollView>
@@ -222,11 +237,11 @@ export default function RecipeScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
   content: { padding: 16, gap: 20, paddingBottom: 48, maxWidth: 760, width: '100%', alignSelf: 'center' },
   gap: { gap: 10 },
   ingredient: { flexDirection: 'row', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
-  amount: { width: 96, fontWeight: '600' },
+  amount: { width: 110, fontWeight: '600' },
   haveRow: { gap: 10, marginVertical: 8 },
   row: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
   step: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
@@ -234,3 +249,12 @@ const styles = StyleSheet.create({
   cover: { width: '100%', aspectRatio: 4 / 3, maxHeight: 420, borderRadius: 16 },
   stepPhoto: { width: '100%', maxWidth: 420, aspectRatio: 4 / 3 },
 });
+
+/** "recipetineats.com" from a full address, for a short source link. */
+function siteName(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}

@@ -10,7 +10,7 @@ import type { CommonPowerSyncDatabase } from '@powersync/common';
 import { PowerSyncContext, useQuery, useStatus } from '@powersync/react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 
-import { fortnightDates } from '@/src/core';
+import { fortnightDates, today } from '@/src/core';
 import { useAuth } from '@/src/backend/auth';
 import { SupabaseConnector } from '@/src/backend/sync/connector';
 import { getDatabase } from '@/src/backend/sync/database';
@@ -65,13 +65,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 function demoState(): State {
   const householdId = 'demo';
   const settings = { householdSize: 2, system: 'metric' as const, standard: 'au' as const };
-  const today = new Date().toISOString().slice(0, 10);
+  const todayIso = today();
   return {
     householdId,
     settings,
     recipes: sampleRecipes,
     ingredients: sampleIngredients,
-    plan: samplePlan(fortnightDates(today), settings.householdSize).map((e) => ({
+    plan: samplePlan(fortnightDates(todayIso), settings.householdSize).map((e) => ({
       ...e,
       id: planEntryId(householdId, e.date, e.slot),
     })),
