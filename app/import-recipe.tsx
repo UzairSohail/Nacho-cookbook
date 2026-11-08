@@ -1,5 +1,5 @@
 import { Link, router, Stack, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
 import { Button, Card, Text, TextInput, useTheme } from '@/components/Themed';
@@ -15,19 +15,20 @@ type Mode = 'url' | 'text';
 /**
  * Paste a recipe's web address, or the recipe itself for sites that won't let
  * the app read their pages. Either way the recipe opens in the editor to check
- * before saving.
+ * before saving. Pages and text shared from other apps arrive here too, as the
+ * url, or text and source, params.
  */
 export default function ImportRecipeScreen() {
-  const params = useLocalSearchParams<{ mode?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; url?: string; text?: string; source?: string }>();
   const { state } = useStore();
   const c = useTheme();
   const [mode, setMode] = useState<Mode>(params.mode === 'text' ? 'text' : 'url');
-  const [url, setUrl] = useState('');
-  const [text, setText] = useState('');
+  const [url, setUrl] = useState(params.url ?? '');
+  const [text, setText] = useState(params.text ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** The address that couldn't be read, kept as the pasted recipe's source. */
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const [failedUrl, setFailedUrl] = useState<string | null>(params.source || null);
 
   // Already saved from this page? Compare without the trailing slash or query.
   const sameAddress = (a: string) => {
@@ -41,18 +42,18 @@ export default function ImportRecipeScreen() {
   const target = url.trim() ? sameAddress(url) : null;
   const existing = target ? state.recipes.find((r) => r.sourceUrl && sameAddress(r.sourceUrl) === target) : undefined;
 
-  const go = async () => {
-    if (!url.trim() || busy) return;
+  const go = async (address: string = url) => {
+    if (!address.trim() || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const recipe = await importRecipe(url);
+      const recipe = await importRecipe(address);
       setPendingImport(draftFromImport(recipe, state.settings.householdSize));
       router.replace({ pathname: '/edit-recipe', params: { imported: '1' } });
     } catch (e) {
       setError(e instanceof ImportError ? e.message : 'Something went wrong reading that page. Try again, or add it by hand.');
       try {
-        setFailedUrl(checkUrl(url).toString());
+        setFailedUrl(checkUrl(address).toString());
       } catch {
         setFailedUrl(null);
       }
@@ -60,6 +61,15 @@ export default function ImportRecipeScreen() {
       setBusy(false);
     }
   };
+
+  // A page shared from another app is read straight away, unless it's already
+  // saved: then the warning below shows and importing again is left to the user.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current || !params.url) return;
+    autoStarted.current = true;
+    if (!existing) go(params.url);
+  }, [params.url]);
 
   const sortText = () => {
     if (!text.trim()) return;
@@ -124,7 +134,7 @@ export default function ImportRecipeScreen() {
               keyboardType="url"
               autoFocus
               returnKeyType="go"
-              onSubmitEditing={go}
+              onSubmitEditing={() => go()}
               editable={!busy}
             />
             {existing ? (
@@ -152,7 +162,7 @@ export default function ImportRecipeScreen() {
             <RNView style={styles.row}>
               <Button
                 title={busy ? 'Finding the recipe…' : 'Find recipe'}
-                onPress={go}
+                onPress={() => go()}
                 disabled={busy || !url.trim()}
                 style={busy || !url.trim() ? { opacity: 0.5 } : undefined}
               />
