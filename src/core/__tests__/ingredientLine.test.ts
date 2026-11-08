@@ -49,3 +49,23 @@ describe('brackets after the name', () => {
     expect(parseIngredientLine('3/4 cup caster sugar ((superfine))')).toMatchObject({ name: 'Caster sugar', note: 'superfine' });
   });
 });
+
+describe('lines from recipe sites', () => {
+  it('keeps the first of two measures and notes the other', () => {
+    expect(parseIngredientLine('200g/ 7oz Oreo cookies, 1.5 standard packs, Note 1')).toMatchObject({
+      quantity: 200, unit: 'g', name: 'Oreo cookies', note: '7oz, 1.5 standard packs, Note 1',
+    });
+    expect(parseIngredientLine('60g / 4 tbsp unsalted butter, melted')).toMatchObject({
+      quantity: 60, unit: 'g', name: 'Unsalted butter', note: '4 tbsp, melted',
+    });
+  });
+  it('moves a dashed remark and several brackets to the note', () => {
+    expect(parseIngredientLine('6 tsp red food colouring (Note 6) – UK readers especially!')).toMatchObject({
+      name: 'Red food colouring', note: 'Note 6, UK readers especially!',
+    });
+    expect(parseIngredientLine('2 tsp gelatine powder (unflavoured gelatine) (Note 2)')).toMatchObject({
+      name: 'Gelatine powder', note: 'unflavoured gelatine, Note 2',
+    });
+    expect(parseIngredientLine('Optional – grated chocolate')).toMatchObject({ name: 'Grated chocolate', optional: true });
+  });
+});
