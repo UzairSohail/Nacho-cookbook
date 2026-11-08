@@ -35,6 +35,14 @@
           "resizeMode": "contain",
           "backgroundColor": "#FFF8F0"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Nacho Cookbook uses your photos to add pictures to recipes.",
+          "cameraPermission": "Nacho Cookbook uses the camera to take photos of your recipes.",
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

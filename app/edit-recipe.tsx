@@ -1,7 +1,8 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
+import { PhotoField } from '@/components/PhotoField';
 import { Button, Card, Text, TextInput, View, useTheme } from '@/components/Themed';
 import { Fonts } from '@/constants/Colors';
 import {
@@ -21,6 +22,8 @@ import {
   type RecipeDraft,
   type StepLine,
 } from '@/src/state/recipeDraft';
+import { recipePhotos, unusedPhotos } from '@/src/photos/paths';
+import { discardPhotos } from '@/src/photos/photoStore';
 import { clearPendingImport, peekPendingImport } from '@/src/state/pendingImport';
 import { useCatalog, useRecipeMap, useStore } from '@/src/state/store';
 
@@ -46,6 +49,15 @@ export default function EditRecipeScreen() {
   );
   const [errors, setErrors] = useState<DraftErrors | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Photos taken in this visit. Left unsaved, they're deleted when the editor closes.
+  const added = useRef(new Set<string>());
+  const saved = useRef(false);
+  useEffect(
+    () => () => {
+      if (!saved.current) void discardPhotos([...added.current]);
+    },
+    [],
+  );
 
   if (id && !existing) {
     return (
@@ -64,8 +76,16 @@ export default function EditRecipeScreen() {
   };
   const setLine = (key: string, patch: Partial<IngredientLine> | { text: string }) =>
     set({ lines: draft.lines.map((l) => (l.key === key ? ({ ...l, ...patch } as DraftLine) : l)) });
-  const setStep = (key: string, text: string) =>
-    set({ steps: draft.steps.map((s) => (s.key === key ? { ...s, text } : s)) });
+  const setStep = (key: string, patch: Partial<StepLine>) =>
+    set({ steps: draft.steps.map((s) => (s.key === key ? { ...s, ...patch } : s)) });
+  const photoAdded = (path: string | undefined) => {
+    if (path) added.current.add(path);
+  };
+  const setCover = (path: string | undefined) => {
+    photoAdded(path);
+    // The first photo is the cover; any others (none yet) stay behind it.
+    set({ photoUrls: path ? [path, ...draft.photoUrls.slice(1)] : draft.photoUrls.slice(1) });
+  };
 
   const save = () => {
     const e = validateDraft(draft);
@@ -75,6 +95,8 @@ export default function EditRecipeScreen() {
     }
     const recipe = draftToRecipe(draft, existing);
     dispatch({ type: 'saveRecipe', recipe });
+    saved.current = true;
+    void discardPhotos(unusedPhotos([...recipePhotos(existing), ...added.current], recipePhotos(recipe)));
     if (fromImport) clearPendingImport();
     if (existing) router.back();
     else router.replace({ pathname: '/recipe/[id]', params: { id: recipe.id } });
@@ -83,6 +105,8 @@ export default function EditRecipeScreen() {
   const remove = () => {
     if (!existing) return;
     dispatch({ type: 'deleteRecipe', id: existing.id });
+    saved.current = true;
+    void discardPhotos([...recipePhotos(existing), ...added.current]);
     if (router.canDismiss()) router.dismissAll();
     else router.replace('/');
   };
@@ -112,6 +136,14 @@ export default function EditRecipeScreen() {
             </Text>
           </Card>
         ) : null}
+        <Field label="PHOTO">
+          <PhotoField
+            path={draft.photoUrls[0]}
+            householdId={state.householdId}
+            onChange={setCover}
+            label="Recipe photo"
+          />
+        </Field>
         <Field label="NAME" error={errors?.title}>
           <TextInput
             value={draft.title}
@@ -180,7 +212,13 @@ export default function EditRecipeScreen() {
         </RNView>
 
         <IngredientsEditor draft={draft} errors={errors} set={set} setLine={setLine} />
-        <StepsEditor steps={draft.steps} set={set} setStep={setStep} />
+        <StepsEditor
+          steps={draft.steps}
+          set={set}
+          setStep={setStep}
+          householdId={state.householdId}
+          photoAdded={photoAdded}
+        />
 
         <Field label="TAGS">
           <TextInput
@@ -357,12 +395,18 @@ function StepsEditor({
   steps,
   set,
   setStep,
+  householdId,
+  photoAdded,
 }: {
   steps: StepLine[];
   set: (p: Partial<RecipeDraft>) => void;
-  setStep: (key: string, text: string) => void;
+  setStep: (key: string, patch: Partial<StepLine>) => void;
+  householdId: string;
+  photoAdded: (path: string | undefined) => void;
 }) {
   const c = useTheme();
+  // Steps whose photo buttons are open (a step with a photo always shows them).
+  const [photoOpen, setPhotoOpen] = useState<Set<string>>(new Set());
   const [pasting, setPasting] = useState(false);
   const [pasted, setPasted] = useState('');
   const addPasted = () => {
@@ -383,19 +427,46 @@ function StepsEditor({
             </RNView>
             <TextInput
               value={s.text}
-              onChangeText={(text) => setStep(s.key, text)}
+              onChangeText={(text) => setStep(s.key, { text })}
               placeholder="What to do"
               accessibilityLabel={`Step ${i + 1}`}
               multiline
               style={[styles.multiline, { flex: 1 }]}
             />
           </RNView>
+          {s.photo || photoOpen.has(s.key) ? (
+            <PhotoField
+              path={s.photo}
+              householdId={householdId}
+              size="step"
+              label={`Photo for step ${i + 1}`}
+              onChange={(photo) => {
+                photoAdded(photo);
+                setStep(s.key, { photo });
+              }}
+            />
+          ) : null}
           <RowTools
             index={i}
             count={steps.length}
             move={(to) => set({ steps: move(steps, i, to) })}
-            remove={() => set({ steps: steps.filter((x) => x.key !== s.key) })}
-          />
+            remove={() => set({ steps: steps.filter((x) => x.key !== s.key) })}>
+            {!s.photo ? (
+              <Chip
+                label="Photo"
+                on={photoOpen.has(s.key)}
+                small
+                onPress={() =>
+                  setPhotoOpen((open) => {
+                    const next = new Set(open);
+                    if (next.has(s.key)) next.delete(s.key);
+                    else next.add(s.key);
+                    return next;
+                  })
+                }
+              />
+            ) : null}
+          </RowTools>
         </Card>
       ))}
       <RNView style={styles.row}>

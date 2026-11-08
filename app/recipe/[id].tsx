@@ -2,6 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
+import { RecipePhoto } from '@/components/RecipePhoto';
 import { Button, Card, Stepper, Text, TextInput, View, useTheme } from '@/components/Themed';
 import { Fonts } from '@/constants/Colors';
 import {
@@ -93,6 +94,9 @@ export default function RecipeScreen() {
           ),
         }}
       />
+      {recipe.photoUrls?.[0] ? (
+        <RecipePhoto path={recipe.photoUrls[0]} style={styles.cover} label={`Photo of ${recipe.title}`} />
+      ) : null}
       <Text variant="title">{recipe.title}</Text>
       {recipe.description ? <Text variant="muted">{recipe.description}</Text> : null}
       {facts.length ? <Text variant="muted">{facts.join(' · ')}</Text> : null}
@@ -194,7 +198,12 @@ export default function RecipeScreen() {
             <RNView style={[styles.stepNum, { backgroundColor: c.tint }]}>
               <Text style={{ color: c.onTint }}>{i + 1}</Text>
             </RNView>
-            <Text style={{ flex: 1 }}>{step.text}</Text>
+            <RNView style={{ flex: 1, gap: 10 }}>
+              {step.text ? <Text>{step.text}</Text> : null}
+              {step.photoUrl ? (
+                <RecipePhoto path={step.photoUrl} style={styles.stepPhoto} label={`Photo for step ${i + 1}`} />
+              ) : null}
+            </RNView>
           </RNView>
         ))}
       </RNView>
@@ -222,4 +231,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
   step: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   stepNum: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  cover: { width: '100%', aspectRatio: 4 / 3, maxHeight: 420, borderRadius: 16 },
+  stepPhoto: { width: '100%', maxWidth: 420, aspectRatio: 4 / 3 },
 });

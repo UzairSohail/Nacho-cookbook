@@ -2,13 +2,13 @@ import { Link, router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View as RNView } from 'react-native';
 
-import { Button, Card, Text, TextInput, View, useTheme } from '@/components/Themed';
+import { RecipePhoto } from '@/components/RecipePhoto';
+import { Button, Card, Text, TextInput, View } from '@/components/Themed';
 import { useCatalog, useStore } from '@/src/state/store';
 
 export default function RecipesScreen() {
   const { state, dispatch, sync } = useStore();
   const catalog = useCatalog();
-  const c = useTheme();
   const [query, setQuery] = useState('');
 
   const recipes = useMemo(() => {
@@ -60,9 +60,7 @@ export default function RecipesScreen() {
             <Link href={{ pathname: '/recipe/[id]', params: { id: item.id } }} asChild>
               <Pressable>
                 <Card style={styles.card}>
-                  <RNView style={[styles.photo, { backgroundColor: c.border }]}>
-                    <Text style={styles.photoLetter}>{item.title[0]}</Text>
-                  </RNView>
+                  <RecipePhoto path={item.photoUrls?.[0]} fallbackLetter={item.title[0]} style={styles.photo} />
                   <RNView style={{ flex: 1, gap: 4 }}>
                     <Text variant="heading">{item.title}</Text>
                     <Text variant="muted">
@@ -87,6 +85,5 @@ const styles = StyleSheet.create({
   search: { flex: 1 },
   list: { padding: 16, paddingTop: 8, gap: 12 },
   card: { flexDirection: 'row', gap: 14, alignItems: 'center' },
-  photo: { width: 64, height: 64, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  photoLetter: { fontSize: 28, opacity: 0.5 },
+  photo: { width: 64, height: 64 },
 });
