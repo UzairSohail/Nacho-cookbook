@@ -1,7 +1,7 @@
 # Builds an installable Android test APK.
-# Pull requests: checks the build and keeps the APK as a workflow artifact.
-# Merges to master (or a manual run): also publishes it as a GitHub release
-# called "Test build N", so there's a direct .apk link to open on a phone.
+# Every pull request push, merge to master or manual run publishes it as a
+# GitHub pre-release called "Test build N", with a direct .apk link to open
+# on a phone.
 name: Android test APK
 
 on:
@@ -56,13 +56,9 @@ jobs:
       - name: Name the APK
         run: cp android/app/build/outputs/apk/release/app-release.apk nacho-cookbook-test-${{ github.run_number }}.apk
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nacho-cookbook-test-${{ github.run_number }}
-          path: nacho-cookbook-test-${{ github.run_number }}.apk
-
+      # A release rather than a workflow artifact: artifacts count toward the
+      # account's Actions storage quota and download as a zip.
       - name: Publish release
-        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: test-build-${{ github.run_number }}
