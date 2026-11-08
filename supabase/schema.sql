@@ -10,7 +10,7 @@ create table households (
   name text not null default 'Our kitchen',
   household_size int not null default 2 check (household_size > 0),
   unit_system text not null default 'metric' check (unit_system in ('metric', 'imperial')),
-  measure_standard text not null default 'metric' check (measure_standard in ('metric', 'au', 'us')),
+  measure_standard text not null default 'au' check (measure_standard in ('metric', 'au', 'us')),
   invite_code text unique not null default encode(gen_random_bytes(6), 'hex'),
   created_at timestamptz not null default now()
 );
@@ -38,6 +38,8 @@ create table recipes (
   title text not null,
   description text,
   servings numeric not null check (servings > 0),
+  -- cup and spoon sizes the recipe was written with; null = household's own
+  measure_standard text check (measure_standard in ('metric', 'au', 'us')),
   keeps_for_days int,
   prep_minutes int,
   cook_minutes int,

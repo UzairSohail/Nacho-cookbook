@@ -65,7 +65,10 @@ export default function RecipeScreen() {
 
   const amountText = (item: ScaledIngredient) => {
     if (item.scaledQuantity == null) return '';
-    const a = formatAmount(item.scaledQuantity, item.unit, system, { standard });
+    const a = formatAmount(item.scaledQuantity, item.unit, system, {
+      standard,
+      sourceStandard: recipe.measureStandard,
+    });
     return `${a.quantity}${a.unit ? ` ${a.unit}` : ''}`;
   };
 
@@ -76,6 +79,12 @@ export default function RecipeScreen() {
       <Stack.Screen options={{ title: recipe.title }} />
       <Text variant="title">{recipe.title}</Text>
       {recipe.description ? <Text variant="muted">{recipe.description}</Text> : null}
+      {recipe.measureStandard && recipe.measureStandard !== standard ? (
+        <Text variant="muted" style={{ color: c.accent }}>
+          Written with {recipe.measureStandard === 'us' ? 'US' : recipe.measureStandard === 'au' ? 'Australian' : 'metric'}{' '}
+          cups and spoons. Spoons are converted to yours; cups are labelled.
+        </Text>
+      ) : null}
 
       <Card style={styles.gap}>
         <Text variant="label">SERVINGS</Text>

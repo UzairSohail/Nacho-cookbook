@@ -10,7 +10,8 @@ Requirements: [Cookbook app requirements](https://claude.ai/artifact/EYCQsxYCUjh
 - **Scaling:** change servings, or tap an ingredient and enter how much you have; everything rescales (both up and down). Amounts show as kitchen fractions, "to taste" items don't scale, and fractional eggs get a rounding hint.
 - **Planner:** 14 days from Monday with breakfast, lunch, dinner and dessert. Servings per slot default to the household size. Meals of the same recipe within its "keeps for" days are grouped into one cook, labelled Cook / Leftovers.
 - **Shopping list:** generated for the whole fortnight, week 1 or week 2. Recipes are scaled to the exact servings planned, the same ingredient is merged across recipes (converting cups to grams where the density is known), pantry staples are skipped, and items are grouped by aisle. Tick, edit, delete, add your own items, and share as text. Updating from the plan keeps your manual changes.
-- **Settings:** household size, metric/imperial, cup and spoon standard (metric, Australian, US), pantry staples.
+- **Settings:** household size, metric/imperial, your cup and spoon sizes (Australian by default, metric or US), pantry staples.
+- **US recipes:** a recipe can be marked as written with US cups and spoons. Spoons are converted to your sizes (2 US tbsp shows as 1 1/2 Australian tbsp), cups are labelled "US cup", and scaling and the shopping list use the right amounts.
 
 The app currently runs on built-in sample data held in memory. Sign-in, the shared household and offline sync (Supabase + PowerSync) come next; the database schema is in `supabase/schema.sql`.
 
