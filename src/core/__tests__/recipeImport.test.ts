@@ -25,7 +25,7 @@ describe('extractRecipe on a food blog with JSON-LD and a WP Recipe Maker card',
 
   it('takes ingredient sections from the recipe card, without tick boxes', () => {
     expect(r.ingredients.map((g) => g.heading)).toEqual(['Red velvet cake', 'Cheesecake', 'Frosting']);
-    expect(r.ingredients[0].items[0]).toBe('1 1/4 cups plain flour (all-purpose)');
+    expect(r.ingredients[0].items[0]).toBe('1 1/4 cups plain flour, all-purpose');
     expect(r.ingredients[1].items[0]).toBe('500 g cream cheese, softened');
     expect(r.ingredients.flatMap((g) => g.items)).toHaveLength(13);
   });

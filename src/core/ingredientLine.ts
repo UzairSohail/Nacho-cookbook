@@ -27,6 +27,8 @@ const COUNT_UNITS = new Set([
 const NUMBER = String.raw`(?:\d+\s+\d+/\d+|\d+/\d+|\d+(?:[.,]\d+)?\s*[½⅓⅔¼¾⅛⅜⅝⅞]?|[½⅓⅔¼¾⅛⅜⅝⅞])`;
 const LEADING_AMOUNT = new RegExp(String.raw`^(${NUMBER})(?:\s*(?:-|–|to)\s*(${NUMBER}))?\s*`);
 
+const DUAL_MEASURE = new RegExp(String.raw`^(${NUMBER})\s*([a-zA-Z]+)\.?\s*/\s*(${NUMBER}\s*[a-zA-Z]+\.?)\s+`);
+
 const capitalise = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 /** Index of the first comma outside brackets, or -1. */
@@ -43,6 +45,14 @@ function topLevelComma(s: string): number {
 export function parseIngredientLine(input: string): ParsedIngredientLine | null {
   let rest = input.trim().replace(/^[-•*·]\s*/, '').trim();
   if (!rest) return null;
+
+  // "60g / 4 tbsp butter" or "200g/ 7oz Oreos": keep the first measure, and the other goes in the note.
+  let altMeasure: string | undefined;
+  const dual = DUAL_MEASURE.exec(rest);
+  if (dual && (parseUnit(dual[2]) || COUNT_UNITS.has(dual[2].toLowerCase()))) {
+    altMeasure = dual[3].trim();
+    rest = `${dual[1]} ${dual[2]} ${rest.slice(dual[0].length)}`;
+  }
 
   let quantity: number | null = null;
   let range: string | undefined;
@@ -95,15 +105,28 @@ export function parseIngredientLine(input: string): ParsedIngredientLine | null 
     name = rest.slice(0, comma);
     note = rest.slice(comma + 1).trim() || undefined;
   }
+  // "Red food colouring – UK readers especially": a spaced dash starts a note.
+  const dash = /\s+[–—-]\s+/.exec(name);
+  if (dash && dash.index > 0) {
+    const before = name.slice(0, dash.index);
+    const extra = name.slice(dash.index + dash[0].length).trim();
+    if (/^optional$/i.test(before.trim())) {
+      // "Optional – grated chocolate"
+      optional = true;
+      name = extra;
+    } else {
+      name = before;
+      if (extra) note = note ? `${extra}, ${note}` : extra;
+    }
+  }
   // "Plain flour (all-purpose)": the bracket is a note, so the name matches other recipes' "plain flour".
-  const trailing = /^(.*?\S)\s*\(+([^()]*)\)+$/.exec(name.trim());
-  if (trailing) {
+  for (let trailing; (trailing = /^(.*?\S)\s*\(+([^()]*)\)+$/.exec(name.trim())); ) {
     name = trailing[1];
     const extra = trailing[2].trim();
     if (extra) note = note ? `${extra}, ${note}` : extra;
   }
   name = capitalise(name.trim());
-  for (const extra of [size, range]) if (extra) note = note ? `${extra}, ${note}` : extra;
+  for (const extra of [size, altMeasure, range]) if (extra) note = note ? `${extra}, ${note}` : extra;
   if (!name) return null;
   return { quantity, unit, name, note, optional };
 }

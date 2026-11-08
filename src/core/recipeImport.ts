@@ -165,7 +165,7 @@ function jsonLdInstructions(v: unknown): ImportedStepGroup[] {
     if (typeof node !== 'object') return;
     const o = node as Json;
     if (hasType(o, 'HowToSection') || (o.itemListElement && !o.text)) {
-      groups.push({ heading: cleanText(o.name) || undefined, steps: [] });
+      groups.push({ heading: cleanText(o.name).replace(/:+$/, '').trim() || undefined, steps: [] });
       visit(o.itemListElement, depth + 1);
       // Steps after a section belong to no section.
       groups.push({ steps: [] });
@@ -213,7 +213,7 @@ function recipeCard(root: HTMLElement): {
   if (wprm) {
     const ingredients = wprm.querySelectorAll('.wprm-recipe-ingredient-group').map((g) => ({
       heading: cardHeading(g, '.wprm-recipe-group-name'),
-      items: g.querySelectorAll('.wprm-recipe-ingredient').map(elText).filter(Boolean),
+      items: g.querySelectorAll('.wprm-recipe-ingredient').map(wprmIngredient).filter(Boolean),
     }));
     const instructions = wprm.querySelectorAll('.wprm-recipe-instruction-group').map((g) => ({
       heading: cardHeading(g, '.wprm-recipe-group-name'),
@@ -241,6 +241,25 @@ function recipeCard(root: HTMLElement): {
     };
   }
   return {};
+}
+
+/**
+ * A WP Recipe Maker ingredient as one line, from its amount, unit, name and
+ * notes parts, with the notes after a comma so they land in the note.
+ */
+function wprmIngredient(li: HTMLElement): string {
+  const part = (name: string) => {
+    const el = li.querySelector(`.wprm-recipe-ingredient-${name}`);
+    return el ? elText(el) : '';
+  };
+  const name = part('name');
+  if (!name) return elText(li);
+  let notes = part('notes').replace(/^[,;\s]+/, '');
+  // "(unflavoured gelatine) (Note 2)" reads better as "unflavoured gelatine, Note 2".
+  notes = notes.replace(/\)\s*\(/g, ', ');
+  if (/^\([^()]*\)$/.test(notes)) notes = notes.slice(1, -1).trim();
+  const main = [part('amount'), part('unit'), name].filter(Boolean).join(' ');
+  return notes ? `${main}, ${notes}` : main;
 }
 
 const nonEmpty = <T>(list: T[]) => (list.length ? list : undefined);
