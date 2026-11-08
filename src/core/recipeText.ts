@@ -21,7 +21,7 @@ type Section = 'intro' | 'ingredients' | 'method' | 'notes' | 'skip';
 const SECTION_HEADINGS: Array<[Section, RegExp]> = [
   ['ingredients', /^(the\s+)?ingredients?( list)?$|^what you('ll)? need$|^you('ll)? need$|^shopping list$/i],
   ['method', /^(the\s+)?(instructions?|method|directions?|steps|preparation|how to make( it| them)?)$/i],
-  ['notes', /^(recipe\s+)?(notes?|tips?|cook'?s notes?|chef'?s notes?|notes? (and|&) tips)$/i],
+  ['notes', /^((recipe|important|extra|additional|helpful|quick|my|cook'?s|chef'?s)\s+)?(notes?|tips?|notes? (and|&) tips)$/i],
   ['skip', /^(equipment|nutrition( information| facts)?|video|did you make this( recipe)?\??|comments?|reviews?|related recipes|you (may|might) also like)$/i],
 ];
 
@@ -146,6 +146,70 @@ const sectionOf = (line: string): Section | undefined => {
   return undefined;
 };
 
+/** Words that start a step, so "Mix all sauce ingredients" is never read as a heading. */
+const STEP_VERB = /^(add|mix|combine|stir|whisk|place|put|pour|prepare|gather|measure|season|toss|blend|cook|serve|use|set|keep|transfer|fold|beat)\b/i;
+
+/**
+ * A heading for one part of a recipe with several parts: "Ingredients: (Chicken)",
+ * "Ingredients - Sauce", "Ingredients for the sauce:", "Sauce ingredients:" or
+ * "Method (Fries)". Gives the section and the part's name.
+ */
+function partHeading(line: string, current: Section): { section: 'ingredients' | 'method'; part: string } | undefined {
+  const l = line.replace(/^#+\s*/, '').trim();
+  if (l.length > 70 || /^\d/.test(l)) return undefined;
+  const word = String.raw`(ingredients?|instructions?|method|directions?|steps)`;
+  const sectionFor = (w: string) => (/^ingredient/i.test(w) ? 'ingredients' : 'method');
+  const tidyPart = (p: string) => p.replace(/^[(\[]\s*|\s*[)\]]$/g, '').replace(/^for\s+(the\s+)?/i, '').replace(/\s*:+$/, '').trim();
+  // "Ingredients: (Chicken)", "Ingredients - Sauce", "Ingredients (for the sauce):", "Ingredients for the sauce"
+  const after = new RegExp(String.raw`^${word}\s*(?:[:\-–—]\s*(.+)|(\(.+\)|\[.+\])\s*:?|\s(for\s.+?)\s*:?)$`, 'i').exec(l);
+  if (after) {
+    const part = tidyPart(after[2] ?? after[3] ?? after[4] ?? '');
+    // "Ingredients: 2 cups flour" is an ingredient after a heading, not a part name.
+    if (part && part.split(/\s+/).length <= 5 && !/^\d/.test(part)) return { section: sectionFor(after[1]), part };
+    return undefined;
+  }
+  // "Sauce ingredients:", "For the chicken ingredients", "Chicken Method"
+  const before = new RegExp(String.raw`^(?:for\s+(?:the\s+)?)?([\p{L}'’& ]{2,40}?)\s+${word}\s*:?$`, 'iu').exec(l);
+  if (before && before[1].trim().split(/\s+/).length <= 4 && !STEP_VERB.test(before[1].trim()) && !/^(the|all|your|any|remaining|other)$/i.test(before[1].trim()) &&
+    // Inside the steps, only with a colon: "then the wet ingredients" is part of a step.
+    (current !== 'method' || /:$/.test(l))) {
+    return { section: sectionFor(before[2]), part: before[1].trim() };
+  }
+  return undefined;
+}
+
+/** "1. Butterfly the chicken…" or "Step 2: Coat…", but not "1.5 Tsp Salt". */
+const NUMBERED_STEP_NUMBER = /^(step\s*)?\d+\s*[.):]\s+/i;
+const NUMBERED_STEP = /^(step\s*)?\d+\s*[.):]\s+[\p{L}"“(]/iu;
+
+/**
+ * "1 Tsp Paprika, 1/2 Tsp Cayenne & 1 Tsp Salt" as separate ingredients. Only
+ * when every piece starts with an amount, so "2 chicken breasts, sliced" and
+ * "Salt & pepper" stay whole. Commas inside brackets don't count.
+ */
+function splitIngredientList(line: string): string[] {
+  const pieces: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '(' || ch === '[') depth++;
+    else if ((ch === ')' || ch === ']') && depth > 0) depth--;
+    else if (depth === 0) {
+      const sep = /^(,\s*|\s+&\s+|\s+and\s+|\s*\+\s+)/i.exec(line.slice(i));
+      if (sep && (ch === ',' || /\s/.test(ch))) {
+        pieces.push(line.slice(start, i));
+        i += sep[0].length - 1;
+        start = i + 1;
+      }
+    }
+  }
+  pieces.push(line.slice(start));
+  const parts = pieces.map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2 || !parts.every((p) => /^(\d|[½⅓⅔¼¾⅛⅜⅝⅞])/.test(p))) return [line];
+  return parts;
+}
+
 const PROMO = /\b(subscribe|newsletter|instagram|facebook|pinterest|affiliate)\b/i;
 
 /** The recipe's name is a short line, not a sentence or a newsletter plug. */
@@ -218,6 +282,16 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
       if (!url) url = urlMatch[1];
       continue;
     }
+    const part: ReturnType<typeof partHeading> = section === 'skip' ? undefined : partHeading(line, section);
+    if (part) {
+      section = part.section;
+      if (part.section === 'ingredients') {
+        sawIngredientsHeading = true;
+        ingredientLines.push(`${part.part}:`);
+      } else methodLines.push(`${part.part}:`);
+      pendingLabel = undefined;
+      continue;
+    }
     const heading = sectionOf(line);
     if (heading) {
       section = heading;
@@ -268,11 +342,18 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
         continue;
       }
       if (!title && looksLikeTitle(line)) {
-        title = line.replace(/\s+recipe$/i, '').trim();
+        title = line
+          .replace(/[\s\p{Extended_Pictographic}\u{FE0F}\u{200D}]+$/u, '')
+          .replace(/\s+recipe$/i, '')
+          .trim();
         continue;
       }
       intro.push(line);
       continue;
+    }
+    // Numbered steps straight after the ingredients, with no Method heading.
+    if (section === 'ingredients' && NUMBERED_STEP.test(line) && !STARTS_WITH_AMOUNT.test(line.replace(NUMBERED_STEP_NUMBER, ''))) {
+      section = 'method';
     }
     if (section === 'ingredients') ingredientLines.push(line);
     else if (section === 'method') methodLines.push(line);
@@ -282,21 +363,23 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
   // No "Ingredients" heading: take short lines that start with an amount as ingredients, and the rest as steps.
   if (!sawIngredientsHeading) {
     const rest = intro.splice(0);
+    const steps: string[] = [];
     let i = 0;
     while (i < rest.length && !STARTS_WITH_AMOUNT.test(rest[i]) && !/^[-•*·]\s/.test(rest[i])) intro.push(rest[i++]);
     for (; i < rest.length; i++) {
       const l = rest[i];
       const numberedStep = /^(step\s*)?\d+[.)]\s+\S/i.test(l) && l.length > 50;
-      if (!methodLines.length && !numberedStep && (l.length <= 80 || STARTS_WITH_AMOUNT.test(l))) ingredientLines.push(l);
-      else methodLines.push(l);
+      if (!steps.length && !numberedStep && (l.length <= 80 || STARTS_WITH_AMOUNT.test(l))) ingredientLines.push(l);
+      else steps.push(l);
     }
+    methodLines.unshift(...steps);
   }
 
   const ingredients: ImportedIngredientGroup[] = [{ items: [] }];
   for (const l of joinBrokenIngredients(ingredientLines)) {
     const h = subHeading(l, 'ingredients');
     if (h !== undefined) ingredients.push({ heading: h || undefined, items: [] });
-    else ingredients[ingredients.length - 1].items.push(l.replace(/^[-•*·]\s*/, ''));
+    else ingredients[ingredients.length - 1].items.push(...splitIngredientList(l.replace(/^[-•*·]\s*/, '')));
   }
 
   const instructions: ImportedStepGroup[] = [{ steps: [] }];
