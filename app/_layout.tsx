@@ -51,7 +51,7 @@ function RootLayoutNav() {
 
   if (!auth.ready) return null;
   // Demo mode (no backend configured) skips sign-in and runs on sample data.
-  const signedIn = auth.demoMode || auth.session != null;
+  const signedIn = auth.demoMode || auth.account != null;
   const inHousehold = auth.demoMode || auth.household != null;
 
   return (

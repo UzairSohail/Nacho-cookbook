@@ -1,10 +1,16 @@
 /**
  * Sign-in state and the household the signed-in person belongs to.
+ *
+ * The account and household are remembered on the device, so the app opens
+ * straight to your recipes with no connection. Sign-in tokens are refreshed
+ * once the device is back online.
  */
-import type { Session } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { isAuthRetryableFetchError, type Session } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { supabase } from './supabase';
+import { getDatabase } from './sync/database';
 
 export interface Household {
   id: string;
@@ -12,12 +18,25 @@ export interface Household {
   inviteCode: string;
 }
 
+export interface Account {
+  id: string;
+  email: string | null;
+}
+
+interface Remembered {
+  account: Account;
+  household: Household | null;
+}
+
+const REMEMBERED_KEY = 'nacho-cookbook.account';
+
 interface AuthValue {
   /** False until the saved session (if any) has been loaded. */
   ready: boolean;
   /** True when no backend is configured: the app runs on local sample data. */
   demoMode: boolean;
-  session: Session | null;
+  /** The signed-in person, also while offline. */
+  account: Account | null;
   household: Household | null;
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation: boolean }>;
@@ -28,45 +47,104 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
+async function readRemembered(): Promise<Remembered | null> {
+  try {
+    const raw = await AsyncStorage.getItem(REMEMBERED_KEY);
+    return raw ? (JSON.parse(raw) as Remembered) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function remember(value: Remembered | null) {
+  try {
+    if (value) await AsyncStorage.setItem(REMEMBERED_KEY, JSON.stringify(value));
+    else await AsyncStorage.removeItem(REMEMBERED_KEY);
+  } catch {
+    // Not fatal: the app just needs a connection next time it starts.
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(!supabase);
-  const [session, setSession] = useState<Session | null>(null);
+  const [account, setAccount] = useState<Account | null>(null);
   const [household, setHousehold] = useState<Household | null>(null);
 
+  /** Looks up the household online, falling back to the one remembered on this device. */
   const loadHousehold = useCallback(async (s: Session | null) => {
     if (!supabase || !s) {
       setHousehold(null);
       return;
     }
-    const { data } = await supabase
+    const me: Account = { id: s.user.id, email: s.user.email ?? null };
+    setAccount(me);
+    const { data, error } = await supabase
       .from('household_members')
       .select('households (id, name, invite_code)')
       .eq('user_id', s.user.id)
       .limit(1)
       .maybeSingle();
+    if (error) {
+      const saved = await readRemembered();
+      setHousehold(saved?.account.id === me.id ? saved.household : null);
+      return;
+    }
     const h = (data?.households ?? null) as unknown as { id: string; name: string; invite_code: string } | null;
-    setHousehold(h ? { id: h.id, name: h.name, inviteCode: h.invite_code } : null);
+    const found = h ? { id: h.id, name: h.name, inviteCode: h.invite_code } : null;
+    setHousehold(found);
+    await remember({ account: me, household: found });
   }, []);
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(async ({ data }) => {
-      setSession(data.session);
-      await loadHousehold(data.session);
+    const client = supabase;
+    (async () => {
+      // Open straight away as the person remembered on this device. Checking the
+      // session can take half a minute offline while Supabase retries.
+      const saved = await readRemembered();
+      if (saved) {
+        setAccount(saved.account);
+        setHousehold(saved.household);
+        setReady(true);
+      }
+      const { data, error } = await client.auth.getSession();
+      if (data.session) {
+        await loadHousehold(data.session);
+      } else if (!(error && isAuthRetryableFetchError(error))) {
+        // Really signed out (not just offline).
+        setAccount(null);
+        setHousehold(null);
+        if (saved) {
+          await remember(null);
+          await getDatabase()?.disconnectAndClear().catch(() => {});
+        }
+      }
       setReady(true);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-      loadHousehold(s);
+    })();
+    const { data: sub } = client.auth.onAuthStateChange((event, s) => {
+      if (event === 'SIGNED_OUT') {
+        setAccount(null);
+        setHousehold(null);
+      } else if (s && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED')) {
+        // Supabase advises not awaiting other Supabase calls inside this callback.
+        setTimeout(() => loadHousehold(s), 0);
+      } else if (s) {
+        setAccount({ id: s.user.id, email: s.user.email ?? null });
+      }
     });
     return () => sub.subscription.unsubscribe();
+  }, [loadHousehold]);
+
+  const refresh = useCallback(async () => {
+    const { data } = (await supabase?.auth.getSession()) ?? { data: { session: null } };
+    await loadHousehold(data.session);
   }, [loadHousehold]);
 
   const value = useMemo<AuthValue>(
     () => ({
       ready,
       demoMode: !supabase,
-      session,
+      account,
       household,
       async signIn(email, password) {
         if (!supabase) return 'Sign-in is not set up yet.';
@@ -79,24 +157,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error ? friendlyError(error.message) : null, needsConfirmation: !error && !data.session };
       },
       async signOut() {
-        await supabase?.auth.signOut();
+        // Remove the household's data from this device too.
+        await getDatabase()?.disconnectAndClear().catch(() => {});
+        await remember(null);
+        await supabase?.auth.signOut({ scope: 'local' });
+        setAccount(null);
+        setHousehold(null);
       },
       async createHousehold(name) {
         if (!supabase) return 'Not connected.';
         const { error } = await supabase.rpc('create_household', { name: name.trim() || 'Our kitchen' });
         if (error) return friendlyError(error.message);
-        await loadHousehold(session);
+        await refresh();
         return null;
       },
       async joinHousehold(code) {
         if (!supabase) return 'Not connected.';
         const { error } = await supabase.rpc('join_household', { code: code.trim().toLowerCase() });
         if (error) return friendlyError(error.message);
-        await loadHousehold(session);
+        await refresh();
         return null;
       },
     }),
-    [ready, session, household, loadHousehold],
+    [ready, account, household, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -113,5 +196,6 @@ function friendlyError(message: string): string {
   if (/email not confirmed/i.test(message)) return 'Please confirm your email first. Check your inbox for the link.';
   if (/invite code not found/i.test(message)) return 'That invite code wasn’t found. Check it and try again.';
   if (/password should be at least/i.test(message)) return 'Use a password of at least 6 characters.';
+  if (/failed to fetch|network request failed/i.test(message)) return 'You’re offline. Connect to the internet and try again.';
   return message;
 }

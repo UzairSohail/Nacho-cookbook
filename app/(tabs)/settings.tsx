@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native'
 import { Button, Card, Stepper, Text, useTheme } from '@/components/Themed';
 import { useAuth } from '@/src/backend/auth';
 import type { MeasureStandard, UnitSystem } from '@/src/core';
-import { useStore } from '@/src/state/store';
+import { useStore, type SyncInfo } from '@/src/state/store';
 
 function Choice<T extends string>({
   options,
@@ -31,8 +31,17 @@ function Choice<T extends string>({
   );
 }
 
+function syncLabel(sync: SyncInfo): string {
+  if (sync.mode === 'demo') return '';
+  if (sync.mode === 'local') return 'Sync isn’t set up yet: changes stay on this device until the app restarts.';
+  if (!sync.connected) return 'Offline. Changes are saved on this device and sync when you’re back online.';
+  if (sync.uploading || sync.downloading) return 'Syncing…';
+  if (!sync.hasSynced) return 'Connecting…';
+  return 'Up to date with your household.';
+}
+
 export default function SettingsScreen() {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, sync } = useStore();
   const auth = useAuth();
   const c = useTheme();
   const { settings } = state;
@@ -47,7 +56,8 @@ export default function SettingsScreen() {
         ) : (
           <>
             <Text variant="heading">{auth.household?.name}</Text>
-            <Text variant="muted">Signed in as {auth.session?.user.email}</Text>
+            <Text variant="muted">Signed in as {auth.account?.email}</Text>
+            <Text variant="muted">{syncLabel(sync)}</Text>
             <Text variant="muted">Invite code (share it so others can join):</Text>
             <Text selectable style={{ fontSize: 22, letterSpacing: 2, color: c.tint }}>
               {auth.household?.inviteCode}

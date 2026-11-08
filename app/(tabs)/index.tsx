@@ -2,11 +2,11 @@ import { Link } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View as RNView } from 'react-native';
 
-import { Card, Text, TextInput, View, useTheme } from '@/components/Themed';
+import { Button, Card, Text, TextInput, View, useTheme } from '@/components/Themed';
 import { useCatalog, useStore } from '@/src/state/store';
 
 export default function RecipesScreen() {
-  const { state } = useStore();
+  const { state, dispatch, sync } = useStore();
   const catalog = useCatalog();
   const c = useTheme();
   const [query, setQuery] = useState('');
@@ -35,7 +35,19 @@ export default function RecipesScreen() {
         data={recipes}
         keyExtractor={(r) => r.id}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text variant="muted">No recipes match “{query}”.</Text>}
+        ListEmptyComponent={
+          query ? (
+            <Text variant="muted">No recipes match “{query}”.</Text>
+          ) : sync.mode === 'synced' && sync.connected && !sync.hasSynced ? (
+            <Text variant="muted">Loading your household’s recipes…</Text>
+          ) : (
+            <Card style={{ gap: 12 }}>
+              <Text variant="heading">No recipes yet</Text>
+              <Text variant="muted">Start with a few sample recipes to try the planner and shopping list.</Text>
+              <Button title="Add sample recipes" onPress={() => dispatch({ type: 'addSampleRecipes' })} />
+            </Card>
+          )
+        }
         renderItem={({ item }) => {
           const minutes = (item.prepMinutes ?? 0) + (item.cookMinutes ?? 0);
           return (
