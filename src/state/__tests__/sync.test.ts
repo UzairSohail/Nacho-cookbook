@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { toServerValues, isPermanentError, isAuthRejection } from '@/src/backend/sync/upload';
+import { toServerValues, isPermanentError, isAuthRejection, planUpload, type QueuedChange } from '@/src/backend/sync/upload';
 import { reducer, withSampleRecipes, type State } from '../reducer';
 import { diffState, rowsToState, type Row, type Rows, type TableName, type Write } from '../rows';
 import { toSql } from '../sql';
@@ -198,5 +198,37 @@ describe('isAuthRejection', () => {
   it('ignores being offline', () => {
     expect(isAuthRejection(new Error('Failed to fetch'))).toBe(false);
     expect(isAuthRejection(undefined)).toBe(false);
+  });
+});
+
+describe('planUpload', () => {
+  const put = (table: string, id: string, opData: Record<string, unknown> = { household_id: H, name: id }): QueuedChange => ({
+    op: 'PUT', table, id, opData,
+  });
+
+  it('sends back-to-back inserts into one table as one upsert', () => {
+    const steps = planUpload([put('ingredients', 'a'), put('ingredients', 'b'), put('recipes', 'r', { household_id: H, title: 'x' })]);
+    expect(steps.map((s) => s.kind)).toEqual(['upsert', 'upsert']);
+    expect(steps[0].kind === 'upsert' && steps[0].rows.map((r) => r.id)).toEqual(['a', 'b']);
+  });
+
+  it('keeps order around updates and deletes', () => {
+    const steps = planUpload([
+      put('shopping_items', 'a'),
+      { op: 'PATCH', table: 'shopping_items', id: 'a', opData: { checked: 1 } },
+      put('shopping_items', 'b'),
+      { op: 'DELETE', table: 'shopping_items', id: 'a' },
+    ]);
+    expect(steps.map((s) => s.kind)).toEqual(['upsert', 'update', 'upsert', 'delete']);
+    expect(steps[1].kind === 'update' && steps[1].values).toEqual({ checked: true });
+  });
+
+  it('starts a new batch when the same row comes again', () => {
+    const steps = planUpload([
+      put('recipes', 'a', { title: 'A' }),
+      put('recipes', 'b', { title: 'B', notes: 'n' }),
+      put('recipes', 'b', { title: 'B', notes: 'm' }),
+    ]);
+    expect(steps).toHaveLength(2);
   });
 });
