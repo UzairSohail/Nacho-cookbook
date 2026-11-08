@@ -132,22 +132,37 @@ export function parseIngredientLine(input: string): ParsedIngredientLine | null 
 }
 
 const AISLE_WORDS: Array<[Aisle, RegExp]> = [
-  ['seafood', /\b(fish|salmon|tuna|prawns?|shrimp|barramundi|cod|snapper|squid|mussels?|scallops?|crab)\b/],
-  ['meat', /\b(chicken|beef|pork|lamb|mince|bacon|ham|sausages?|steak|turkey|chorizo|prosciutto|salami)\b/],
-  ['dairy', /\b(milk|butter|cheese|cheddar|parmesan|mozzarella|feta|cream|yoghurt|yogurt|eggs?|ricotta|haloumi|halloumi)\b/],
-  ['bakery', /\b(bread|rolls?|buns?|tortillas?|wraps?|pita|naan|croissants?|baguette)\b/],
-  ['frozen', /\b(frozen|ice cream|peas)\b/],
-  ['spices', /\b(salt|pepper|cumin|paprika|turmeric|cinnamon|nutmeg|oregano|thyme|chilli flakes|chili flakes|curry powder|garam masala|spice|ground cloves|bay lea(f|ves)|vanilla)\b/],
-  ['produce', /\b(onions?|garlic|tomato(es)?|potato(es)?|carrots?|celery|lettuce|spinach|capsicum|peppers?|zucchini|broccoli|cauliflower|mushrooms?|lemons?|limes?|apples?|bananas?|berries|avocados?|ginger|herbs?|parsley|coriander|cilantro|basil|mint|chillies|chilli|chili|cucumber|kale|cabbage|leeks?|shallots?|spring onions?|pumpkin|sweet potato|corn|beans?|fruit)\b/],
-  ['drinks', /\b(juice|soda|wine|beer|coffee|tea)\b/],
-  ['pantry', /\b(flour|sugar|rice|pasta|spaghetti|noodles|oil|vinegar|stock|broth|oats|honey|syrup|sauce|tinned|canned|beans|lentils|chickpeas|nuts?|almonds|cocoa|chocolate|baking|yeast|cornflour|cornstarch|breadcrumbs|coconut|paste|mustard|mayonnaise|jam|peanut)\b/],
+  ['household', /\b(dish(washing)? (soap|liquid|tablets)|detergent|laundry|toilet (paper|rolls?)|paper towels?|tissues|bin bags|garbage bags|cling wrap|glad wrap|foil|baking paper|sponges?|batteries|shampoo|conditioner|toothpaste|soap|deodorant|nappies)\b/],
+  ['frozen', /\b(frozen|ice cream|gelato|ice blocks?|puff pastry|shortcrust pastry|filo|fish fingers|hash browns|ice)\b/],
+  ['seafood', /\b(fish|salmon|tuna|prawns?|shrimp|barramundi|cod|snapper|squid|calamari|mussels?|scallops?|crab|oysters?|whiting|flathead|ling|basa|anchov(y|ies))\b/],
+  ['meat', /\b(chicken|beef|pork|lamb|mince|bacon|ham|sausages?|snags?|steak|turkey|chorizo|prosciutto|salami|pancetta|veal|brisket|ribs|cutlets?|drumsticks?|schnitzel|rump|sirloin|scotch fillet|chuck|pastrami)\b/],
+  ['dairy', /\b(milk|buttermilk|butter|cheese|cheddar|tasty|parmesan|parmigiano|pecorino|mozzarella|bocconcini|burrata|feta|brie|camembert|gouda|cream|creme fraiche|crème fraîche|mascarpone|yoghurt|yogurt|eggs?|ricotta|haloumi|halloumi|custard|tofu|margarine)\b/],
+  ['bakery', /\b(bread|loaf|sourdough|rolls?|buns?|tortillas?|wraps?|pita|pitta|naan|croissants?|baguette|brioche|muffins?|crumpets?|bagels?|focaccia|ciabatta|english muffins?)\b/],
+  ['drinks', /\b(juice|soda|soft drink|lemonade|cola|mineral water|sparkling water|wine|beer|cider|coffee beans|kombucha)\b/],
+  ['spices', /\b(salt|peppercorns?|pepper|cayenne|cumin|paprika|turmeric|cinnamon|nutmeg|allspice|cardamom|oregano|dried thyme|dried rosemary|dried basil|chilli flakes|chili flakes|chilli powder|chili powder|curry powder|garam masala|five spice|spice|spices|seasoning|ground cloves|whole cloves|bay lea(f|ves)|vanilla|fennel seeds?|coriander seeds?|mustard seeds?|sumac|za'?atar|saffron)\b/],
+  ['produce', /\b(onions?|garlic|tomato(es)?|potato(es)?|spuds?|carrots?|celery|lettuce|rocket|spinach|silverbeet|capsicums?|zucchinis?|eggplants?|broccoli(ni)?|cauliflower|mushrooms?|lemons?|limes?|oranges?|mandarins?|apples?|pears?|bananas?|berries|strawberr(y|ies)|blueberr(y|ies)|raspberr(y|ies)|grapes|mango(es)?|pineapple|watermelon|rockmelon|kiwi ?fruit|peach(es)?|plums?|avocados?|ginger|herbs?|parsley|coriander|cilantro|basil|mint|dill|chives|thyme|rosemary|sage|lemongrass|chillies|chilli|chili|cucumbers?|kale|cabbage|wombok|bok choy|pak choy|leeks?|shallots?|spring onions?|scallions?|pumpkin|butternut|sweet potato(es)?|corn|cobs?|beans?|green beans|snow peas|sugar snap peas|asparagus|beetroot|radish(es)?|fennel|salad|sprouts|fruit)\b/],
+  ['pantry', /\b(flour|sugar|rice|pasta|spaghetti|penne|fettuccine|lasagne|macaroni|noodles|couscous|quinoa|oil|vinegar|stock|broth|oats|honey|syrup|sauce|tinned|canned|lentils|chickpeas|nuts?|almonds|walnuts|cashews|pecans|peanuts?|seeds|raisins|sultanas|dates|cocoa|chocolate|baking|bicarb|yeast|cornflour|cornstarch|breadcrumbs|panko|coconut|paste|mustard|mayonnaise|mayo|jam|vegemite|cereal|crackers|biscuits|chips|gelatine|cornflakes|tahini|miso|kecap|passata)\b/],
+];
+
+/**
+ * Names where one word would send them to the wrong aisle ("fish sauce" is not
+ * seafood, "garlic cloves" are not a spice). Checked first, in order.
+ */
+const AISLE_OVERRIDES: Array<[Aisle, RegExp]> = [
+  ['frozen', /\b(frozen|ice cream|gelato)\b/],
+  ['produce', /\b(lemon|lime|orange) (juice|zest)\b/],
+  ['spices', /\b(garlic|onion|chilli|chili|ginger|mustard) (powder|salt|flakes|seeds?)\b/],
+  ['pantry', /\b(sauce|stock|broth|vinegar|oil|paste|passata|tinned|canned|egg noodles|corn ?flour|corn ?chips|corn ?flakes|dried (beans|lentils|chickpeas|fruit|apricots|cranberries|mango)|crushed tomatoes|diced tomatoes|chopped tomatoes|coconut (milk|cream)|peanut butter|evaporated milk|condensed milk|powdered milk|milk powder|(kidney|black|cannellini|baked|butter|borlotti) beans|(almond|oat|soy|rice|long ?life) milk|chocolate|desiccated)\b/],
+  ['produce', /\b(red|green|yellow|bell|sweet) peppers?\b/],
+  ['produce', /\bgarlic\b/],
+  ['produce', /\b(snow|snap) peas\b/],
+  ['frozen', /\bpeas\b/],
 ];
 
 /** A best guess at the shop aisle for a new ingredient, from its name. */
 export function guessAisle(name: string): Aisle {
   const n = name.toLowerCase();
-  // Tinned and dried things live in the pantry whatever they are.
-  if (/\b(tinned|canned|dried|crushed tomatoes|tomato paste|coconut milk|peanut butter|stock)\b/.test(n)) return 'pantry';
+  for (const [aisle, re] of AISLE_OVERRIDES) if (re.test(n)) return aisle;
   for (const [aisle, re] of AISLE_WORDS) if (re.test(n)) return aisle;
   return 'other';
 }
