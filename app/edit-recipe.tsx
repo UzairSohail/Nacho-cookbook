@@ -46,7 +46,8 @@ export default function EditRecipeScreen() {
   const statStyle = [styles.stat, { flexBasis: useWindowDimensions().width < 560 ? '40%' : '20%' }];
 
   const fromImport = !existing && imported ? peekPendingImport() : null;
-  const pasted = !!fromImport && imported === 'text';
+  const fromPhoto = !!fromImport && imported === 'photo';
+  const pasted = !!fromImport && (imported === 'text' || fromPhoto);
   const [draft, setDraft] = useState<RecipeDraft>(
     () => (existing ? draftFromRecipe(existing, catalog) : fromImport) ?? emptyDraft(state.settings.householdSize),
   );
@@ -118,7 +119,7 @@ export default function EditRecipeScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen
         options={{
-          title: existing ? 'Edit recipe' : fromImport ? (pasted ? 'Check pasted recipe' : 'Check imported recipe') : 'New recipe',
+          title: existing ? 'Edit recipe' : fromImport ? (fromPhoto ? 'Check photo recipe' : pasted ? 'Check pasted recipe' : 'Check imported recipe') : 'New recipe',
           headerRight: () => (
             <Pressable onPress={save} accessibilityRole="button" hitSlop={12} style={{ marginRight: Platform.OS === 'web' ? 16 : 0 }}>
               <Text style={{ color: c.tint, fontFamily: Fonts.bodyBold }}>Save</Text>
@@ -132,7 +133,7 @@ export default function EditRecipeScreen() {
         keyboardShouldPersistTaps="handled">
         {fromImport ? (
           <Card style={styles.gap}>
-            <Text variant="heading">{pasted ? 'Sorted from your pasted text' : `Imported from ${hostOf(draft.sourceUrl)}`}</Text>
+            <Text variant="heading">{fromPhoto ? 'Sorted from your photo' : pasted ? 'Sorted from your pasted text' : `Imported from ${hostOf(draft.sourceUrl)}`}</Text>
             <Text variant="muted">
               {pasted
                 ? 'Check each line landed in the right place: ingredients, steps and notes. '

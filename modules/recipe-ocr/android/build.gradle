@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.recipeocr'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.recipeocr"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+dependencies {
+  // The bundled Latin model: works offline from the first use, with no
+  // download from Google Play services. Adds a few MB to the APK.
+  implementation 'com.google.mlkit:text-recognition:16.0.1'
+}

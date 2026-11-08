@@ -32,7 +32,7 @@ export default function RecipesScreen() {
           accessibilityLabel="Search recipes"
           style={styles.search}
         />
-        <Button title="Import" kind="secondary" style={styles.topButton} accessibilityLabel="Import a recipe from a website or pasted text" onPress={() => router.push('/import-recipe')} />
+        <Button title="Import" kind="secondary" style={styles.topButton} accessibilityLabel="Import a recipe from a website, a photo or pasted text" onPress={() => router.push('/import-recipe')} />
         <Button title="+ Add" style={styles.topButton} accessibilityLabel="Add a recipe" onPress={() => router.push('/edit-recipe')} />
       </RNView>
       <FlatList
@@ -47,8 +47,9 @@ export default function RecipesScreen() {
           ) : (
             <Card style={{ gap: 12 }}>
               <Text variant="heading">No recipes yet</Text>
-              <Text variant="muted">Import one from a website, add your own, or start with a few sample recipes to try the planner and shopping list.</Text>
+              <Text variant="muted">Import one from a website or a cookbook photo, add your own, or start with a few sample recipes to try the planner and shopping list.</Text>
               <Button title="Import from a website" onPress={() => router.push('/import-recipe')} />
+              <Button title="From a cookbook photo" kind="secondary" onPress={() => router.push({ pathname: '/import-recipe', params: { mode: 'photo' } })} />
               <Button title="Paste a recipe" kind="secondary" onPress={() => router.push({ pathname: '/import-recipe', params: { mode: 'text' } })} />
               <Button title="Add a recipe" kind="secondary" onPress={() => router.push('/edit-recipe')} />
               <Button title="Add sample recipes" kind="secondary" onPress={() => dispatch({ type: 'addSampleRecipes' })} />

@@ -1,0 +1,7 @@
+{
+  "name": "recipe-ocr",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reads text from a photo of a recipe on Android with Google ML Kit, on the device.",
+  "main": "index.ts"
+}
