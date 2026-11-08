@@ -23,7 +23,6 @@ export default function ShoppingListScreen() {
   const [choice, setChoice] = useState<RangeChoice>('fortnight');
   const [newItem, setNewItem] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [showSkipped, setShowSkipped] = useState(false);
 
   const days = fortnightDates(new Date().toISOString().slice(0, 10));
   const ranges: Record<RangeChoice, DateRange> = {
@@ -43,6 +42,9 @@ export default function ShoppingListScreen() {
   };
 
   const aisles = AISLE_ORDER.filter((a) => state.list.some((i) => i.aisle === a));
+  // Generated lines are keyed "<ingredient id>|<kind>", so staples can be flagged without storing anything extra.
+  const staples = new Set(state.pantry);
+  const isStaple = (item: ListItem) => !!item.key && staples.has(item.key.split('|')[0]);
 
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.content}>
@@ -98,6 +100,7 @@ export default function ShoppingListScreen() {
                 <Row
                   key={item.id}
                   item={item}
+                  staple={isStaple(item)}
                   amount={amount(item.quantity, item.unit)}
                   editing={editingId === item.id}
                   onEdit={() => setEditingId(editingId === item.id ? null : item.id)}
@@ -116,27 +119,23 @@ export default function ShoppingListScreen() {
         <Text variant="muted">Your list is empty. Plan some meals, then generate a list.</Text>
       )}
 
-      {state.skippedPantry.length ? (
-        <RNView style={styles.gap}>
-          <Pressable onPress={() => setShowSkipped(!showSkipped)}>
-            <Text variant="label">
-              {showSkipped ? '▾' : '▸'} SKIPPED: PANTRY STAPLES ({state.skippedPantry.length})
-            </Text>
-          </Pressable>
-          {showSkipped
-            ? state.skippedPantry.map((s) => (
-                <Text key={s.key} variant="muted">
-                  {s.name} {s.quantity != null ? `(${amount(s.quantity, s.unit)})` : ''}
-                </Text>
-              ))
-            : null}
-        </RNView>
-      ) : null}
     </ScrollView>
   );
 }
 
-function Row({ item, amount, editing, onEdit }: { item: ListItem; amount: string; editing: boolean; onEdit: () => void }) {
+function Row({
+  item,
+  staple,
+  amount,
+  editing,
+  onEdit,
+}: {
+  item: ListItem;
+  staple: boolean;
+  amount: string;
+  editing: boolean;
+  onEdit: () => void;
+}) {
   const { dispatch } = useStore();
   const c = useTheme();
   const [name, setName] = useState(item.name);
@@ -159,7 +158,13 @@ function Row({ item, amount, editing, onEdit }: { item: ListItem; amount: string
             {amount ? <Text style={{ fontWeight: '600' }}>{amount} </Text> : null}
             {item.name}
           </Text>
-          {item.sources.length ? <Text variant="muted">{item.sources.join(', ')}</Text> : null}
+          {item.sources.length || staple ? (
+            <Text variant="muted">
+              {staple ? <Text style={{ color: c.accent }}>Pantry staple, check the cupboard</Text> : null}
+              {staple && item.sources.length ? ' · ' : ''}
+              {item.sources.join(', ')}
+            </Text>
+          ) : null}
         </Pressable>
       </RNView>
       {editing ? (

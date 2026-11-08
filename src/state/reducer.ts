@@ -10,7 +10,6 @@ import {
   stableUuid,
   uuid,
   type DateRange,
-  type GeneratedItem,
   type Ingredient,
   type ListItem,
   type MealSlot,
@@ -38,8 +37,6 @@ export interface State {
   pantry: string[];
   list: ListItem[];
   dismissedKeys: string[];
-  /** Pantry staples left off the last generated list. Kept on this device only. */
-  skippedPantry: GeneratedItem[];
 }
 
 /** A recipe as the editor saves it: ingredients by name, not by catalog id. */
@@ -95,11 +92,10 @@ export function reducer(state: State, action: Action): State {
         plan: state.plan.map((e) => (e.id === action.entryId ? { ...e, servings: Math.max(1, action.servings) } : e)),
       };
     case 'generateList': {
-      const { items, skippedPantry } = generateShoppingList({
+      const { items } = generateShoppingList({
         entries: state.plan,
         recipes: new Map(state.recipes.map((r) => [r.id, r])),
         catalog: new Map(state.ingredients.map((i) => [i.id, i])),
-        pantryStapleIds: new Set(state.pantry),
         range: action.range,
         system: state.settings.system,
         standard: state.settings.standard,
@@ -107,7 +103,6 @@ export function reducer(state: State, action: Action): State {
       return {
         ...state,
         list: reconcileList(state.list, items, new Set(state.dismissedKeys), uuid),
-        skippedPantry,
       };
     }
     case 'toggleItem':

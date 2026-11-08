@@ -27,15 +27,13 @@ export interface GenerateOptions extends UnitOptions {
   entries: PlanEntry[];
   recipes: Map<string, Recipe>;
   catalog: Map<string, Ingredient>;
-  pantryStapleIds: Set<string>;
   range: DateRange;
   system: UnitSystem;
 }
 
 export interface GeneratedList {
+  /** Everything the planned meals need, pantry staples included, by aisle then name. */
   items: GeneratedItem[];
-  /** Items left off because they are pantry staples. */
-  skippedPantry: GeneratedItem[];
 }
 
 interface Bucket {
@@ -111,7 +109,6 @@ export function generateShoppingList(opts: GenerateOptions): GeneratedList {
   );
 
   const items: GeneratedItem[] = [];
-  const skippedPantry: GeneratedItem[] = [];
   for (const b of buckets.values()) {
     if (b.kind === 'none' && hasAmount.has(b.ingredientId)) continue;
     const ingredient = opts.catalog.get(b.ingredientId);
@@ -135,14 +132,11 @@ export function generateShoppingList(opts: GenerateOptions): GeneratedList {
       optional: b.optional,
       sources: [...b.sources].sort(),
     };
-    (opts.pantryStapleIds.has(b.ingredientId) ? skippedPantry : items).push(generated);
+    items.push(generated);
   }
 
-  const byAisleThenName = (a: GeneratedItem, b: GeneratedItem) =>
-    AISLE_ORDER.indexOf(a.aisle) - AISLE_ORDER.indexOf(b.aisle) || a.name.localeCompare(b.name);
-  items.sort(byAisleThenName);
-  skippedPantry.sort(byAisleThenName);
-  return { items, skippedPantry };
+  items.sort((a, b) => AISLE_ORDER.indexOf(a.aisle) - AISLE_ORDER.indexOf(b.aisle) || a.name.localeCompare(b.name));
+  return { items };
 }
 
 /** A line on the saved shopping list, as people see and edit it. */

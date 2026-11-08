@@ -57,7 +57,6 @@ describe('recipes written with other cup and spoon sizes', () => {
       entries: [{ id: 'a', date: '2026-11-09', slot: 'dessert', recipeId: 'cookies', servings: 12 }],
       recipes: new Map([[usCookies.id, usCookies]]),
       catalog,
-      pantryStapleIds: new Set(),
       range: { start: '2026-11-09', end: '2026-11-22' },
       system: 'metric',
       standard: 'au',

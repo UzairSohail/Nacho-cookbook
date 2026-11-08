@@ -21,7 +21,7 @@ function empty(): State {
   return {
     householdId: H,
     settings: { householdSize: 2, system: 'metric', standard: 'au' },
-    recipes: [], ingredients: [], plan: [], pantry: [], list: [], dismissedKeys: [], skippedPantry: [],
+    recipes: [], ingredients: [], plan: [], pantry: [], list: [], dismissedKeys: [],
   };
 }
 

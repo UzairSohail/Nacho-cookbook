@@ -8,7 +8,7 @@
  */
 import type { CommonPowerSyncDatabase } from '@powersync/common';
 import { PowerSyncContext, useQuery, useStatus } from '@powersync/react';
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 
 import { fortnightDates } from '@/src/core';
 import { useAuth } from '@/src/backend/auth';
@@ -78,7 +78,6 @@ function demoState(): State {
     pantry: samplePantry,
     list: [],
     dismissedKeys: [],
-    skippedPantry: [],
   };
 }
 
@@ -106,7 +105,6 @@ function SyncedStore({ db, householdId, children }: { db: CommonPowerSyncDatabas
   const pantry = useTable('pantry_staples', householdId);
   const items = useTable('shopping_items', householdId);
   const dismissed = useTable('shopping_dismissed', householdId);
-  const [skippedPantry, setSkippedPantry] = useState<State['skippedPantry']>([]);
   const status = useStatus();
 
   const state = useMemo(() => {
@@ -114,8 +112,8 @@ function SyncedStore({ db, householdId, children }: { db: CommonPowerSyncDatabas
       households, ingredients, recipes, recipe_ingredients: recipeIngredients, recipe_steps: recipeSteps,
       plan_entries: plan, pantry_staples: pantry, shopping_items: items, shopping_dismissed: dismissed,
     };
-    return rowsToState(rows, householdId, skippedPantry);
-  }, [households, ingredients, recipes, recipeIngredients, recipeSteps, plan, pantry, items, dismissed, householdId, skippedPantry]);
+    return rowsToState(rows, householdId);
+  }, [households, ingredients, recipes, recipeIngredients, recipeSteps, plan, pantry, items, dismissed, householdId]);
 
   // Latest state including changes not yet echoed back by the watched queries,
   // so two quick taps build on each other.
@@ -136,7 +134,6 @@ function SyncedStore({ db, householdId, children }: { db: CommonPowerSyncDatabas
       const before = latest.current;
       const after = reducer(before, action);
       latest.current = after;
-      if (after.skippedPantry !== before.skippedPantry) setSkippedPantry(after.skippedPantry);
       const writes = diffState(before, after);
       if (!writes.length) return;
       db.writeTransaction(async (tx) => {

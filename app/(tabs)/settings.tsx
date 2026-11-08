@@ -97,7 +97,10 @@ export default function SettingsScreen() {
 
       <Card style={styles.gap}>
         <Text variant="label">PANTRY STAPLES</Text>
-        <Text variant="muted">Ticked items are always in the house, so they're left off the shopping list.</Text>
+        <Text variant="muted">
+          Things you usually keep in the house. They stay on the shopping list, marked so you can check the cupboard
+          before you buy more.
+        </Text>
         {ingredients.map((i) => {
           const on = state.pantry.includes(i.id);
           return (

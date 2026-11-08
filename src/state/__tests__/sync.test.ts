@@ -17,7 +17,6 @@ function empty(): State {
     pantry: [],
     list: [],
     dismissedKeys: [],
-    skippedPantry: [],
   };
 }
 
@@ -60,7 +59,7 @@ describe('syncing state through database rows', () => {
     const step = (action: Parameters<typeof reducer>[1]) => {
       const next = reducer(state, action);
       rows = apply(rows, diffState(state, next));
-      state = rowsToState(rows, H, next.skippedPantry);
+      state = rowsToState(rows, H);
       return next;
     };
 
@@ -97,7 +96,6 @@ describe('syncing state through database rows', () => {
 
     step({ type: 'generateList', range: { start: '2026-11-09', end: '2026-11-22' } });
     expect(state.list.length).toBeGreaterThan(3);
-    expect(state.skippedPantry.length).toBeGreaterThan(0);
 
     const first = state.list[0];
     step({ type: 'toggleItem', id: first.id });

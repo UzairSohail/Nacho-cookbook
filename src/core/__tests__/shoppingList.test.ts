@@ -8,8 +8,8 @@ const e = (id: string, date: string, recipeId: string, servings: number, slot: P
   id, date, slot, recipeId, servings,
 });
 
-const generate = (entries: PlanEntry[], pantry: string[] = []) =>
-  generateShoppingList({ entries, recipes, catalog, pantryStapleIds: new Set(pantry), range, system: 'metric' });
+const generate = (entries: PlanEntry[]) =>
+  generateShoppingList({ entries, recipes, catalog, range, system: 'metric' });
 
 const find = <T extends { ingredientId: string }>(items: T[], id: string) => items.find((i) => i.ingredientId === id);
 
@@ -44,10 +44,9 @@ describe('generateShoppingList', () => {
     expect(find(items, 'garlic')).toMatchObject({ quantity: 6, unit: 'cloves' });
   });
 
-  it('leaves out pantry staples but reports them', () => {
-    const { items, skippedPantry } = generate([e('a', '2026-11-09', 'pancakes', 4)], ['salt']);
-    expect(find(items, 'salt')).toBeUndefined();
-    expect(find(skippedPantry, 'salt')).toBeDefined();
+  it('keeps pantry staples on the list', () => {
+    const { items } = generate([e('a', '2026-11-09', 'pancakes', 4)]);
+    expect(find(items, 'salt')).toBeDefined();
   });
 
   it('drops a to-taste line when the item is also bought by amount', () => {
