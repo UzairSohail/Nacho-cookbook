@@ -21,18 +21,28 @@ import {
   type RecipeDraft,
   type StepLine,
 } from '@/src/state/recipeDraft';
+import { clearPendingImport, peekPendingImport } from '@/src/state/pendingImport';
 import { useCatalog, useRecipeMap, useStore } from '@/src/state/store';
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return 'the web';
+  }
+};
 
 /** Add a recipe (no id) or edit one (?id=...). */
 export default function EditRecipeScreen() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, imported } = useLocalSearchParams<{ id?: string; imported?: string }>();
   const { state, dispatch } = useStore();
   const existing = useRecipeMap().get(id ?? '');
   const catalog = useCatalog();
   const c = useTheme();
 
-  const [draft, setDraft] = useState<RecipeDraft>(() =>
-    existing ? draftFromRecipe(existing, catalog) : emptyDraft(state.settings.householdSize),
+  const fromImport = !existing && imported ? peekPendingImport() : null;
+  const [draft, setDraft] = useState<RecipeDraft>(
+    () => (existing ? draftFromRecipe(existing, catalog) : fromImport) ?? emptyDraft(state.settings.householdSize),
   );
   const [errors, setErrors] = useState<DraftErrors | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -65,6 +75,7 @@ export default function EditRecipeScreen() {
     }
     const recipe = draftToRecipe(draft, existing);
     dispatch({ type: 'saveRecipe', recipe });
+    if (fromImport) clearPendingImport();
     if (existing) router.back();
     else router.replace({ pathname: '/recipe/[id]', params: { id: recipe.id } });
   };
@@ -80,7 +91,7 @@ export default function EditRecipeScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen
         options={{
-          title: existing ? 'Edit recipe' : 'New recipe',
+          title: existing ? 'Edit recipe' : fromImport ? 'Check imported recipe' : 'New recipe',
           headerRight: () => (
             <Pressable onPress={save} accessibilityRole="button" hitSlop={12} style={{ marginRight: Platform.OS === 'web' ? 16 : 0 }}>
               <Text style={{ color: c.tint, fontFamily: Fonts.bodyBold }}>Save</Text>
@@ -92,13 +103,22 @@ export default function EditRecipeScreen() {
         style={{ backgroundColor: c.background }}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled">
+        {fromImport ? (
+          <Card style={styles.gap}>
+            <Text variant="heading">Imported from {hostOf(draft.sourceUrl)}</Text>
+            <Text variant="muted">
+              Check the ingredients and steps, and pick US cups and spoons below if it's an American recipe. Nothing is saved
+              until you press Save.
+            </Text>
+          </Card>
+        ) : null}
         <Field label="NAME" error={errors?.title}>
           <TextInput
             value={draft.title}
             onChangeText={(title) => set({ title })}
             placeholder="e.g. Chicken curry"
             accessibilityLabel="Recipe name"
-            autoFocus={!existing}
+            autoFocus={!existing && !fromImport}
           />
         </Field>
         <Field label="DESCRIPTION">

@@ -40,3 +40,12 @@ describe('guessAisle', () => {
     ['Something odd', 'other'],
   ])('%s -> %s', (name, aisle) => expect(guessAisle(name)).toBe(aisle));
 });
+
+describe('brackets after the name', () => {
+  it('moves them to the note so names match across recipes', () => {
+    expect(parseIngredientLine('1 1/4 cups plain flour (all-purpose)')).toMatchObject({ name: 'Plain flour', note: 'all-purpose' });
+    expect(parseIngredientLine('1/2 tsp baking soda (bi-carb, sifted)')).toMatchObject({ name: 'Baking soda', note: 'bi-carb, sifted' });
+    expect(parseIngredientLine('250g cream cheese (full fat), softened')).toMatchObject({ name: 'Cream cheese', note: 'full fat, softened' });
+    expect(parseIngredientLine('3/4 cup caster sugar ((superfine))')).toMatchObject({ name: 'Caster sugar', note: 'superfine' });
+  });
+});
