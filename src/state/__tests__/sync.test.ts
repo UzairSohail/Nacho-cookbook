@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { toServerValues, isPermanentError } from '@/src/backend/sync/upload';
+import { toServerValues, isPermanentError, isAuthRejection } from '@/src/backend/sync/upload';
 import { reducer, withSampleRecipes, type State } from '../reducer';
 import { diffState, rowsToState, type Row, type Rows, type TableName, type Write } from '../rows';
 import { toSql } from '../sql';
@@ -187,5 +187,16 @@ describe('uploading to Supabase', () => {
     expect(isPermanentError('22P02')).toBe(true);
     expect(isPermanentError('PGRST301')).toBe(false);
     expect(isPermanentError(undefined)).toBe(false);
+  });
+});
+
+describe('isAuthRejection', () => {
+  it('spots the sync server refusing a sign-in token', () => {
+    const msg = 'HTTP Unauthorized: {"error":{"code":"PSYNC_S2105","status":401,"description":"Unexpected \\"aud\\" claim value"}}';
+    expect(isAuthRejection(new Error(msg))).toBe(true);
+  });
+  it('ignores being offline', () => {
+    expect(isAuthRejection(new Error('Failed to fetch'))).toBe(false);
+    expect(isAuthRejection(undefined)).toBe(false);
   });
 });

@@ -54,3 +54,8 @@ function parseArray(v: unknown): unknown[] {
 export function isPermanentError(code: unknown): boolean {
   return typeof code === 'string' && (/^22...$/.test(code) || /^23...$/.test(code) || code === '42501');
 }
+
+/** PowerSync reports a refused sign-in token as an HTTP 401 / PSYNC_S21xx error. */
+export function isAuthRejection(error: Error | undefined): boolean {
+  return !!error && /\b401\b|unauthori[sz]ed|PSYNC_S21\d\d/i.test(error.message);
+}
