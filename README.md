@@ -15,13 +15,16 @@ Requirements: [Cookbook app requirements](https://claude.ai/artifact/EYCQsxYCUjh
 
 **Accounts:** email sign-in, then start a household or join one with an invite code (shown in Settings). Without Supabase settings the app skips sign-in and runs in demo mode on sample data.
 
-Recipes, the plan and the list are still held in memory on each device; syncing them through the household (PowerSync + Supabase) comes next.
+**Offline sync:** once PowerSync is set up, recipes, the plan, pantry staples and the shopping list live in a database on each device and sync through the household. Everything works with no connection; changes upload when you're back online, and the last edit wins. The app also opens offline as the last signed-in person. Signing out removes the household's data from that device. A new household starts empty, with an "Add sample recipes" button.
 
-## Connecting Supabase
+Without PowerSync settings, a signed-in household still runs on in-memory sample data.
 
-1. Create a Supabase project and run `supabase/schema.sql` in its SQL Editor.
+## Connecting Supabase and PowerSync
+
+1. Create a Supabase project and run `supabase/schema.sql`, then each file in `supabase/migrations/` in order, in its SQL Editor.
 2. Put the Project URL and publishable key in `.env` (already set for the household project; use `.env.local` to point at another one).
-3. Restart `npm run web` / `npm run android`.
+3. Set up PowerSync and add `EXPO_PUBLIC_POWERSYNC_URL` to `.env`: see [docs/powersync-setup.md](docs/powersync-setup.md).
+4. Restart `npm run web` / `npm run android`.
 
 ## Project layout
 
@@ -31,16 +34,20 @@ Recipes, the plan and the list are still held in memory on each device; syncing 
 | `components/Themed.tsx` | Themed text, cards, buttons, inputs and the servings stepper. |
 | `constants/Colors.ts` | The cream / tomato / herb green palette, light and dark. |
 | `src/core/` | Pure TypeScript logic: units, fractions, scaling, planner batches, shopping list. No React, fully unit tested. |
-| `src/state/` | App state and sample data. This is where the offline database plugs in. |
+| `src/state/` | App state: `reducer.ts` (every change as a pure function), `rows.ts` (to and from database rows, and which rows a change touched), `store.tsx` (in-memory or synced store). |
 | `src/backend/` | Supabase client and sign-in / household state. |
-| `supabase/schema.sql` | Database tables and row level security for households. |
+| `src/backend/sync/` | PowerSync: device database schema, the Supabase connector that uploads changes, and opening the database on Android/iOS/web. |
+| `supabase/` | `schema.sql` (tables and row level security) and `migrations/`. |
+| `powersync/sync-config.yaml` | Sync Streams: which rows each person's devices get. |
 
 ## Running it
 
 ```bash
-npm install
-npm test          # unit tests for src/core
+npm install       # also copies PowerSync's web workers into public/@powersync
+npm test          # unit tests
 npx tsc --noEmit  # typecheck
 npm run web       # open in the browser
 npm run android   # Android emulator or Expo Go on a phone
 ```
+
+With PowerSync set up, Android needs a development build (`npx expo run:android`, or EAS) because the offline database is a native module that Expo Go doesn't include. Demo mode still runs in Expo Go.

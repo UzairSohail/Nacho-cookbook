@@ -1,0 +1,23 @@
+# PowerSync Sync Streams for Nacho Cookbook.
+# Paste this into the PowerSync Dashboard → Sync Streams, then Validate and Deploy.
+# Each person gets every row of the household(s) they belong to, mirroring the
+# row level security rules in supabase/schema.sql.
+config:
+  edition: 3
+
+streams:
+  household:
+    auto_subscribe: true
+    with:
+      my_households: SELECT household_id FROM household_members WHERE user_id = auth.user_id()
+    queries:
+      - SELECT * FROM households WHERE id IN my_households
+      - SELECT * FROM household_members WHERE household_id IN my_households
+      - SELECT * FROM ingredients WHERE household_id IN my_households
+      - SELECT * FROM recipes WHERE household_id IN my_households
+      - SELECT * FROM recipe_ingredients WHERE household_id IN my_households
+      - SELECT * FROM recipe_steps WHERE household_id IN my_households
+      - SELECT * FROM plan_entries WHERE household_id IN my_households
+      - SELECT * FROM pantry_staples WHERE household_id IN my_households
+      - SELECT * FROM shopping_items WHERE household_id IN my_households
+      - SELECT * FROM shopping_dismissed WHERE household_id IN my_households

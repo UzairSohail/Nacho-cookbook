@@ -1,138 +1,70 @@
 /**
- * App state for v1 development. This in-memory store is the seam where the
- * offline database (PowerSync + Supabase) plugs in next: screens only use the
- * hooks and actions below, so swapping the storage won't touch them.
+ * App state. Screens only use the hooks below, so they don't know where the
+ * data lives:
+ *
+ * - Signed in with sync set up: the offline database on this device, kept in
+ *   step with the household through PowerSync. Works with no connection.
+ * - Otherwise (demo mode, or sync not set up yet): sample data in memory.
  */
-import { createContext, useContext, useMemo, useReducer, type ReactNode } from 'react';
+import type { CommonPowerSyncDatabase } from '@powersync/common';
+import { PowerSyncContext, useQuery, useStatus } from '@powersync/react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 
-import {
-  fortnightDates,
-  generateShoppingList,
-  reconcileList,
-  type DateRange,
-  type GeneratedItem,
-  type Ingredient,
-  type ListItem,
-  type MealSlot,
-  type MeasureStandard,
-  type PlanEntry,
-  type Recipe,
-  type UnitSystem,
-} from '@/src/core';
+import { fortnightDates } from '@/src/core';
+import { useAuth } from '@/src/backend/auth';
+import { SupabaseConnector } from '@/src/backend/sync/connector';
+import { getDatabase } from '@/src/backend/sync/database';
+import { reducer, planEntryId, type Action, type State } from './reducer';
+import { diffState, rowsToState, type Row, type Rows, type TableName } from './rows';
+import { toSql } from './sql';
 import { samplePantry, samplePlan, sampleIngredients, sampleRecipes } from './sampleData';
 
-export interface Settings {
-  householdSize: number;
-  system: UnitSystem;
-  standard: MeasureStandard;
+export type { Action, Settings, State } from './reducer';
+
+export type SyncInfo =
+  | { mode: 'demo' }
+  | { mode: 'local' } // signed in, but sync isn't set up yet
+  | { mode: 'synced'; connected: boolean; uploading: boolean; downloading: boolean; hasSynced: boolean; lastSyncedAt?: Date };
+
+interface StoreValue {
+  state: State;
+  dispatch: (a: Action) => void;
+  sync: SyncInfo;
 }
 
-export interface State {
-  settings: Settings;
-  recipes: Recipe[];
-  ingredients: Ingredient[];
-  plan: PlanEntry[];
-  pantry: string[];
-  list: ListItem[];
-  dismissedKeys: string[];
-  skippedPantry: GeneratedItem[];
-}
+const StoreContext = createContext<StoreValue | null>(null);
 
-type Action =
-  | { type: 'settings'; patch: Partial<Settings> }
-  | { type: 'togglePantry'; ingredientId: string }
-  | { type: 'setMeal'; date: string; slot: MealSlot; recipeId: string | null; servings?: number }
-  | { type: 'setMealServings'; entryId: string; servings: number }
-  | { type: 'generateList'; range: DateRange }
-  | { type: 'toggleItem'; id: string }
-  | { type: 'editItem'; id: string; patch: Pick<ListItem, 'name' | 'quantity' | 'unit'> }
-  | { type: 'addItem'; name: string }
-  | { type: 'deleteItem'; id: string }
-  | { type: 'clearChecked' };
-
-let counter = 0;
-const newId = () => `${Date.now().toString(36)}-${(counter++).toString(36)}`;
-
-function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case 'settings':
-      return { ...state, settings: { ...state.settings, ...action.patch } };
-    case 'togglePantry': {
-      const has = state.pantry.includes(action.ingredientId);
-      return {
-        ...state,
-        pantry: has ? state.pantry.filter((id) => id !== action.ingredientId) : [...state.pantry, action.ingredientId],
-      };
-    }
-    case 'setMeal': {
-      const others = state.plan.filter((e) => !(e.date === action.date && e.slot === action.slot));
-      if (!action.recipeId) return { ...state, plan: others };
-      const entry: PlanEntry = {
-        id: `${action.date}-${action.slot}`,
-        date: action.date,
-        slot: action.slot,
-        recipeId: action.recipeId,
-        servings: action.servings ?? state.settings.householdSize,
-      };
-      return { ...state, plan: [...others, entry] };
-    }
-    case 'setMealServings':
-      return {
-        ...state,
-        plan: state.plan.map((e) => (e.id === action.entryId ? { ...e, servings: Math.max(1, action.servings) } : e)),
-      };
-    case 'generateList': {
-      const { items, skippedPantry } = generateShoppingList({
-        entries: state.plan,
-        recipes: new Map(state.recipes.map((r) => [r.id, r])),
-        catalog: new Map(state.ingredients.map((i) => [i.id, i])),
-        pantryStapleIds: new Set(state.pantry),
-        range: action.range,
-        system: state.settings.system,
-        standard: state.settings.standard,
-      });
-      return {
-        ...state,
-        list: reconcileList(state.list, items, new Set(state.dismissedKeys), newId),
-        skippedPantry,
-      };
-    }
-    case 'toggleItem':
-      return { ...state, list: state.list.map((i) => (i.id === action.id ? { ...i, checked: !i.checked } : i)) };
-    case 'editItem':
-      return {
-        ...state,
-        list: state.list.map((i) => (i.id === action.id ? { ...i, ...action.patch, edited: true } : i)),
-      };
-    case 'addItem': {
-      const name = action.name.trim();
-      if (!name) return state;
-      const item: ListItem = {
-        id: newId(), name, quantity: null, unit: null, aisle: 'other', checked: false, edited: false, sources: [],
-      };
-      return { ...state, list: [...state.list, item] };
-    }
-    case 'deleteItem': {
-      const item = state.list.find((i) => i.id === action.id);
-      return {
-        ...state,
-        list: state.list.filter((i) => i.id !== action.id),
-        dismissedKeys: item?.key ? [...state.dismissedKeys, item.key] : state.dismissedKeys,
-      };
-    }
-    case 'clearChecked':
-      return { ...state, list: state.list.filter((i) => !i.checked) };
+export function StoreProvider({ children }: { children: ReactNode }) {
+  const auth = useAuth();
+  const db = getDatabase();
+  const householdId = auth.household?.id;
+  if (db && householdId && !auth.demoMode) {
+    return (
+      <PowerSyncContext.Provider value={db}>
+        <SyncedStore key={householdId} db={db} householdId={householdId}>
+          {children}
+        </SyncedStore>
+      </PowerSyncContext.Provider>
+    );
   }
+  return <MemoryStore mode={auth.demoMode ? 'demo' : 'local'}>{children}</MemoryStore>;
 }
 
-function initialState(): State {
-  const settings: Settings = { householdSize: 2, system: 'metric', standard: 'au' };
+// ---- in memory ------------------------------------------------------------
+
+function demoState(): State {
+  const householdId = 'demo';
+  const settings = { householdSize: 2, system: 'metric' as const, standard: 'au' as const };
   const today = new Date().toISOString().slice(0, 10);
   return {
+    householdId,
     settings,
     recipes: sampleRecipes,
     ingredients: sampleIngredients,
-    plan: samplePlan(fortnightDates(today), settings.householdSize),
+    plan: samplePlan(fortnightDates(today), settings.householdSize).map((e) => ({
+      ...e,
+      id: planEntryId(householdId, e.date, e.slot),
+    })),
     pantry: samplePantry,
     list: [],
     dismissedKeys: [],
@@ -140,13 +72,90 @@ function initialState(): State {
   };
 }
 
-const StoreContext = createContext<{ state: State; dispatch: (a: Action) => void } | null>(null);
-
-export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, initialState);
-  const value = useMemo(() => ({ state, dispatch }), [state]);
+function MemoryStore({ mode, children }: { mode: 'demo' | 'local'; children: ReactNode }) {
+  const [state, dispatch] = useReducer(reducer, undefined, demoState);
+  const value = useMemo<StoreValue>(() => ({ state, dispatch, sync: { mode } }), [state, mode]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
+
+// ---- synced ---------------------------------------------------------------
+
+function useTable(table: TableName, householdId: string) {
+  const column = table === 'households' ? 'id' : 'household_id';
+  // Table names are fixed in this file, never from user input.
+  return useQuery<Row & { id: string }>(`SELECT * FROM ${table} WHERE ${column} = ? ORDER BY id`, [householdId]).data;
+}
+
+function SyncedStore({ db, householdId, children }: { db: CommonPowerSyncDatabase; householdId: string; children: ReactNode }) {
+  const households = useTable('households', householdId);
+  const ingredients = useTable('ingredients', householdId);
+  const recipes = useTable('recipes', householdId);
+  const recipeIngredients = useTable('recipe_ingredients', householdId);
+  const recipeSteps = useTable('recipe_steps', householdId);
+  const plan = useTable('plan_entries', householdId);
+  const pantry = useTable('pantry_staples', householdId);
+  const items = useTable('shopping_items', householdId);
+  const dismissed = useTable('shopping_dismissed', householdId);
+  const [skippedPantry, setSkippedPantry] = useState<State['skippedPantry']>([]);
+  const status = useStatus();
+
+  const state = useMemo(() => {
+    const rows: Rows = {
+      households, ingredients, recipes, recipe_ingredients: recipeIngredients, recipe_steps: recipeSteps,
+      plan_entries: plan, pantry_staples: pantry, shopping_items: items, shopping_dismissed: dismissed,
+    };
+    return rowsToState(rows, householdId, skippedPantry);
+  }, [households, ingredients, recipes, recipeIngredients, recipeSteps, plan, pantry, items, dismissed, householdId, skippedPantry]);
+
+  // Latest state including changes not yet echoed back by the watched queries,
+  // so two quick taps build on each other.
+  const latest = useRef(state);
+  useEffect(() => {
+    latest.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    db.connect(new SupabaseConnector()).catch((e) => console.warn('Sync: could not connect', e));
+    return () => {
+      db.disconnect().catch(() => {});
+    };
+  }, [db]);
+
+  const dispatch = useCallback(
+    (action: Action) => {
+      const before = latest.current;
+      const after = reducer(before, action);
+      latest.current = after;
+      if (after.skippedPantry !== before.skippedPantry) setSkippedPantry(after.skippedPantry);
+      const writes = diffState(before, after);
+      if (!writes.length) return;
+      db.writeTransaction(async (tx) => {
+        for (const w of writes) {
+          const { sql, params } = toSql(w);
+          await tx.execute(sql, params);
+        }
+      }).catch((e) => console.error('Could not save change', action.type, e));
+    },
+    [db],
+  );
+
+  const sync = useMemo<SyncInfo>(
+    () => ({
+      mode: 'synced',
+      connected: status.connected,
+      uploading: status.dataFlowStatus.uploading,
+      downloading: status.dataFlowStatus.downloading,
+      hasSynced: status.hasSynced ?? false,
+      lastSyncedAt: status.lastSyncedAt,
+    }),
+    [status],
+  );
+
+  const value = useMemo<StoreValue>(() => ({ state, dispatch, sync }), [state, dispatch, sync]);
+  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
+}
+
+// ---- hooks ----------------------------------------------------------------
 
 export function useStore() {
   const ctx = useContext(StoreContext);
