@@ -1,0 +1,14 @@
+# Netlify hosting for the web app: builds on every merge to master.
+[build]
+  command = "npx expo export --platform web"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Single page app: every route serves index.html. Real files such as the
+# PowerSync workers in /@powersync are served first.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

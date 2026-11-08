@@ -51,3 +51,8 @@ npm run android   # Android emulator or Expo Go on a phone
 ```
 
 With PowerSync set up, Android needs a development build (`npx expo run:android`, or EAS) because the offline database is a native module that Expo Go doesn't include. Demo mode still runs in Expo Go.
+
+## Test builds and hosting
+
+- **Android APK:** `.github/workflows/android-apk.yml` builds a test APK on every pull request and merge. Each merge to `master` publishes it as a "Test build N" pre-release under GitHub Releases; open that page on the phone and install the `.apk`. It's signed with a debug key, so it's for testing only, and builds for 64-bit ARM phones.
+- **Web app:** hosted on Netlify from `master` using `netlify.toml` (`npx expo export --platform web`, published from `dist`, every route falls back to `index.html`). Add the site's address to Supabase under Authentication → URL Configuration (Site URL and Redirect URLs).
