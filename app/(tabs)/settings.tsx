@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
-import { Card, Stepper, Text, useTheme } from '@/components/Themed';
+import { Button, Card, Stepper, Text, useTheme } from '@/components/Themed';
+import { useAuth } from '@/src/backend/auth';
 import type { MeasureStandard, UnitSystem } from '@/src/core';
 import { useStore } from '@/src/state/store';
 
@@ -32,12 +33,30 @@ function Choice<T extends string>({
 
 export default function SettingsScreen() {
   const { state, dispatch } = useStore();
+  const auth = useAuth();
   const c = useTheme();
   const { settings } = state;
   const ingredients = [...state.ingredients].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.content}>
+      <Card style={styles.gap}>
+        <Text variant="label">HOUSEHOLD</Text>
+        {auth.demoMode ? (
+          <Text variant="muted">Demo mode: running on sample data on this device only.</Text>
+        ) : (
+          <>
+            <Text variant="heading">{auth.household?.name}</Text>
+            <Text variant="muted">Signed in as {auth.session?.user.email}</Text>
+            <Text variant="muted">Invite code (share it so others can join):</Text>
+            <Text selectable style={{ fontSize: 22, letterSpacing: 2, color: c.tint }}>
+              {auth.household?.inviteCode}
+            </Text>
+            <Button title="Sign out" kind="secondary" onPress={auth.signOut} />
+          </>
+        )}
+      </Card>
+
       <Card style={styles.gap}>
         <Text variant="label">HOUSEHOLD SIZE</Text>
         <Text variant="muted">New meals in the planner default to this many servings.</Text>
