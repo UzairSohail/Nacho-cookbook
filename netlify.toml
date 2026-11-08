@@ -6,6 +6,12 @@
 [build.environment]
   NODE_VERSION = "22"
 
+# Recipe import for the web app: fetches recipe pages server side, since
+# browsers can't read other sites' pages. Served at /.netlify/functions/import-recipe.
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 # Single page app: every route serves index.html. Real files such as the
 # PowerSync workers in /@powersync are served first.
 [[redirects]]

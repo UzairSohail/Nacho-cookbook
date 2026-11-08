@@ -10,6 +10,7 @@ import {
   type Ingredient,
   type Recipe,
 } from '@/src/core';
+import type { ImportedRecipe } from '@/src/core/recipeImport';
 import type { RecipeInput } from './reducer';
 
 export interface IngredientLine {
@@ -52,6 +53,8 @@ export interface RecipeDraft {
   notes: string;
   lines: DraftLine[];
   steps: StepLine[];
+  /** Photo found by URL import; the editor doesn't show photos yet. */
+  photoUrls?: string[];
 }
 
 const key = () => uuid();
@@ -116,12 +119,12 @@ export function draftFromRecipe(recipe: Recipe, catalog: Map<string, Ingredient>
 }
 
 /** Turns pasted text, one ingredient per line, into editor lines. Lines ending in ":" become headings. */
-export function linesFromText(text: string): DraftLine[] {
+export function linesFromText(text: string, headings = true): DraftLine[] {
   const out: DraftLine[] = [];
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
-    if (/:$/.test(line) && !/^\d/.test(line)) {
+    if (headings && /:$/.test(line) && !/^\d/.test(line)) {
       out.push({ kind: 'heading', key: key(), text: line.replace(/:$/, '').trim() });
       continue;
     }
@@ -232,7 +235,7 @@ export function draftToRecipe(d: RecipeDraft, base?: Recipe): RecipeInput {
     keepsForDays: int(d.keepsForDays) ?? null,
     prepMinutes: int(d.prepMinutes),
     cookMinutes: int(d.cookMinutes),
-    photoUrls: base?.photoUrls ?? [],
+    photoUrls: base?.photoUrls ?? d.photoUrls ?? [],
     tags,
     sourceUrl: opt(d.sourceUrl),
     notes: opt(d.notes),
@@ -243,5 +246,37 @@ export function draftToRecipe(d: RecipeDraft, base?: Recipe): RecipeInput {
       // Step photos stay with their step position until photo editing arrives.
       photoUrl: base?.steps[i]?.photoUrl,
     })),
+  };
+}
+
+/** An editor draft from a recipe found on a web page, for the person to check before saving. */
+export function draftFromImport(r: ImportedRecipe, householdSize = 4): RecipeDraft {
+  const lines: DraftLine[] = [];
+  for (const group of r.ingredients) {
+    // A blank heading after a section ends it, so an unnamed group isn't swallowed by the one above.
+    if (group.heading || lines.length) lines.push({ kind: 'heading', key: key(), text: group.heading ?? '' });
+    lines.push(...linesFromText(group.items.join('\n'), false));
+  }
+  const multi = r.instructions.length > 1;
+  const steps: StepLine[] = r.instructions.flatMap((g) =>
+    g.steps.map((text, i) => ({
+      key: key(),
+      // Steps have no sections, so the section name leads its first step: "Cheesecake: Beat the cream cheese…".
+      text: multi && g.heading && i === 0 ? `${g.heading}: ${text}` : text,
+    })),
+  );
+  return {
+    ...emptyDraft(householdSize),
+    title: r.title,
+    description: r.description ?? '',
+    servings: String(r.servings ?? householdSize),
+    prepMinutes: r.prepMinutes != null ? String(r.prepMinutes) : '',
+    cookMinutes: r.cookMinutes != null ? String(r.cookMinutes) : '',
+    tags: r.tags.join(', '),
+    sourceUrl: r.sourceUrl,
+    notes: r.notes ?? '',
+    lines: lines.length ? lines : [blankIngredient()],
+    steps: steps.length ? steps : [blankStep()],
+    photoUrls: r.imageUrl ? [r.imageUrl] : undefined,
   };
 }

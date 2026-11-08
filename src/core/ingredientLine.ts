@@ -29,6 +29,17 @@ const LEADING_AMOUNT = new RegExp(String.raw`^(${NUMBER})(?:\s*(?:-|–|to)\s*($
 
 const capitalise = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
+/** Index of the first comma outside brackets, or -1. */
+function topLevelComma(s: string): number {
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '(') depth++;
+    else if (s[i] === ')') depth = Math.max(0, depth - 1);
+    else if (s[i] === ',' && depth === 0) return i;
+  }
+  return -1;
+}
+
 export function parseIngredientLine(input: string): ParsedIngredientLine | null {
   let rest = input.trim().replace(/^[-•*·]\s*/, '').trim();
   if (!rest) return null;
@@ -79,10 +90,17 @@ export function parseIngredientLine(input: string): ParsedIngredientLine | null 
 
   let name = rest;
   let note: string | undefined;
-  const comma = rest.indexOf(',');
+  const comma = topLevelComma(rest);
   if (comma > 0) {
     name = rest.slice(0, comma);
     note = rest.slice(comma + 1).trim() || undefined;
+  }
+  // "Plain flour (all-purpose)": the bracket is a note, so the name matches other recipes' "plain flour".
+  const trailing = /^(.*?\S)\s*\(+([^()]*)\)+$/.exec(name.trim());
+  if (trailing) {
+    name = trailing[1];
+    const extra = trailing[2].trim();
+    if (extra) note = note ? `${extra}, ${note}` : extra;
   }
   name = capitalise(name.trim());
   for (const extra of [size, range]) if (extra) note = note ? `${extra}, ${note}` : extra;
