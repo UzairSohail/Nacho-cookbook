@@ -1,3 +1,4 @@
+import * as ImagePicker from 'expo-image-picker';
 import { Link, router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
@@ -6,29 +7,33 @@ import { Button, Card, Text, TextInput, useTheme } from '@/components/Themed';
 import { importRecipe, ImportError } from '@/src/import/importRecipe';
 import { NoRecipeTextError, parseRecipeText } from '@/src/core/recipeText';
 import { checkUrl } from '@/src/import/pageFetch';
+import { PhotoTextError, readPhotoText } from '@/src/import/photoText';
 import { setPendingImport } from '@/src/state/pendingImport';
 import { draftFromImport } from '@/src/state/recipeDraft';
 import { useStore } from '@/src/state/store';
 
-type Mode = 'url' | 'text';
+type Mode = 'url' | 'photo' | 'text';
 
 /**
- * Paste a recipe's web address, or the recipe itself for sites that won't let
- * the app read their pages. Either way the recipe opens in the editor to check
- * before saving. Pages and text shared from other apps arrive here too, as the
- * url, or text and source, params.
+ * Paste a recipe's web address, take a photo of a cookbook page, or paste the
+ * recipe itself for sites that won't let the app read their pages. Photos are
+ * read into the paste box first, so misread words can be fixed. Every way, the
+ * recipe opens in the editor to check before saving. Pages and text shared
+ * from other apps arrive here too, as the url, or text and source, params.
  */
 export default function ImportRecipeScreen() {
   const params = useLocalSearchParams<{ mode?: string; url?: string; text?: string; source?: string }>();
   const { state } = useStore();
   const c = useTheme();
-  const [mode, setMode] = useState<Mode>(params.mode === 'text' ? 'text' : 'url');
+  const [mode, setMode] = useState<Mode>(params.mode === 'text' || params.mode === 'photo' ? params.mode : 'url');
   const [url, setUrl] = useState(params.url ?? '');
   const [text, setText] = useState(params.text ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** The address that couldn't be read, kept as the pasted recipe's source. */
   const [failedUrl, setFailedUrl] = useState<string | null>(params.source || null);
+  /** How many photos have been read into the text box. */
+  const [photoPages, setPhotoPages] = useState(0);
 
   // Already saved from this page? Compare without the trailing slash or query.
   const sameAddress = (a: string) => {
@@ -76,13 +81,51 @@ export default function ImportRecipeScreen() {
     try {
       const recipe = parseRecipeText(text, failedUrl ?? '');
       setPendingImport(draftFromImport(recipe, state.settings.householdSize));
-      router.replace({ pathname: '/edit-recipe', params: { imported: 'text' } });
+      router.replace({ pathname: '/edit-recipe', params: { imported: photoPages > 0 ? 'photo' : 'text' } });
     } catch (e) {
       setError(
         e instanceof NoRecipeTextError
           ? "Couldn't find any ingredients in that. Include the ingredient list, ideally under an \"Ingredients\" heading."
           : 'Something went wrong reading that text. Try again, or add it by hand.',
       );
+    }
+  };
+
+  const readPhotos = async (source: 'camera' | 'library') => {
+    if (busy) return;
+    setError(null);
+    try {
+      if (source === 'camera' && Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          setError('Camera access is off for Nacho Cookbook. Turn it on in your phone’s settings, or choose a photo instead.');
+          return;
+        }
+      }
+      const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 1 };
+      const result =
+        source === 'camera'
+          ? await ImagePicker.launchCameraAsync(options)
+          : await ImagePicker.launchImageLibraryAsync({ ...options, allowsMultipleSelection: true, selectionLimit: 4, orderedSelection: true });
+      const assets = result.canceled ? [] : (result.assets ?? []);
+      if (!assets.length) return;
+      setBusy(true);
+      const pages: string[] = [];
+      for (const asset of assets) {
+        const read = (await readPhotoText(asset.uri)).trim();
+        if (read) pages.push(read);
+      }
+      if (!pages.length) {
+        setError('Couldn’t find any writing in that picture. Try a sharper, well-lit photo taken straight on.');
+        return;
+      }
+      setText((t) => [t.trim(), ...pages].filter(Boolean).join('\n\n'));
+      setPhotoPages((n) => n + pages.length);
+      setMode('text');
+    } catch (e) {
+      setError(e instanceof PhotoTextError ? e.message : 'Something went wrong reading that picture. Try again, or add it by hand.');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -98,7 +141,8 @@ export default function ImportRecipeScreen() {
         <RNView style={[styles.tabs, { borderColor: c.border }]} accessibilityRole="tablist">
           {(
             [
-              ['url', 'From a website'],
+              ['url', 'Website'],
+              ['photo', 'Photo'],
               ['text', 'Paste text'],
             ] as const
           ).map(([m, label]) => (
@@ -169,12 +213,66 @@ export default function ImportRecipeScreen() {
               {busy ? <ActivityIndicator color={c.tint} /> : null}
             </RNView>
           </>
-        ) : (
+        ) : mode === 'photo' ? (
           <>
             <Text variant="muted">
-              Copy the whole recipe from the website, a message or your notes, and paste it below: name, ingredients, method
-              and notes. The app sorts it into the editor for you to check before saving.
+              Take a photo of a cookbook page or recipe card, or choose a screenshot. The app reads the writing into a text box
+              for you to check, then sorts it into the editor.
             </Text>
+            <Text variant="muted">
+              For the best result, lay the page flat in good light and take the photo straight on. A recipe over two pages can
+              be two photos.
+            </Text>
+            {error ? (
+              <Card style={styles.gap}>
+                <Text style={{ color: c.tint }}>{error}</Text>
+              </Card>
+            ) : null}
+            <RNView style={styles.row}>
+              <Button
+                title="Take a photo"
+                onPress={() => readPhotos('camera')}
+                disabled={busy}
+                style={busy ? { opacity: 0.5 } : undefined}
+              />
+              <Button
+                title={Platform.OS === 'web' ? 'Choose a picture' : 'Choose from photos'}
+                kind="secondary"
+                onPress={() => readPhotos('library')}
+                disabled={busy}
+                style={busy ? { opacity: 0.5 } : undefined}
+              />
+            </RNView>
+            {busy ? (
+              <RNView style={styles.row}>
+                <ActivityIndicator color={c.tint} />
+                <Text variant="muted">
+                  {Platform.OS === 'web' && photoPages === 0
+                    ? 'Reading the recipe… The first time takes a little longer while the reader loads.'
+                    : 'Reading the recipe…'}
+                </Text>
+              </RNView>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {photoPages > 0 ? (
+              <Card style={styles.gap}>
+                <Text>
+                  Read from your {photoPages === 1 ? 'photo' : `${photoPages} photos`}. Check the text below, especially amounts and
+                  fractions, then sort it into a recipe.
+                </Text>
+                <RNView style={styles.row}>
+                  <Button title="Add another page" kind="secondary" onPress={() => switchTo('photo')} />
+                </RNView>
+              </Card>
+            ) : null}
+            {photoPages === 0 ? (
+              <Text variant="muted">
+                Copy the whole recipe from the website, a message or your notes, and paste it below: name, ingredients, method
+                and notes. The app sorts it into the editor for you to check before saving.
+              </Text>
+            ) : null}
             {failedUrl ? (
               <Text variant="muted">The recipe will be linked to {failedUrl}.</Text>
             ) : null}
