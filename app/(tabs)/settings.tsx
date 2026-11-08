@@ -55,9 +55,10 @@ export default function SettingsScreen() {
           value={settings.system}
           onChange={(system) => dispatch({ type: 'settings', patch: { system } })}
         />
-        <Text variant="label" style={{ marginTop: 8 }}>CUP AND SPOON SIZES</Text>
+        <Text variant="label" style={{ marginTop: 8 }}>YOUR CUP AND SPOON SIZES</Text>
+        <Text variant="muted">Recipes can be marked as using US measures and are converted to these.</Text>
         <Choice<MeasureStandard>
-          options={[['metric', 'Metric 250 ml cup'], ['au', 'Australian (20 ml tbsp)'], ['us', 'US 237 ml cup']]}
+          options={[['au', 'Australian (20 ml tbsp)'], ['metric', 'Metric (15 ml tbsp)'], ['us', 'US (237 ml cup)']]}
           value={settings.standard}
           onChange={(standard) => dispatch({ type: 'settings', patch: { standard } })}
         />

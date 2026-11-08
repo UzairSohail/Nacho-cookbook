@@ -1,4 +1,5 @@
 /** Shared data types. These mirror the database tables in supabase/schema.sql. */
+import type { MeasureStandard } from './units';
 
 export type Aisle =
   | 'produce'
@@ -51,6 +52,11 @@ export interface Recipe {
   description?: string;
   /** How many servings the recipe makes as written. */
   servings: number;
+  /**
+   * Cup and spoon sizes the recipe was written with ('us' for American
+   * recipes). Null means the household's own measures.
+   */
+  measureStandard?: MeasureStandard | null;
   /** How many days cooked leftovers keep. Null means the default (see planner.ts). */
   keepsForDays?: number | null;
   prepMinutes?: number;

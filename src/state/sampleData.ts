@@ -28,8 +28,9 @@ export const sampleRecipes: Recipe[] = [
   {
     id: 'pancakes',
     title: 'Fluffy pancakes',
-    description: 'Weekend pancakes with a crisp edge.',
+    description: 'Weekend pancakes with a crisp edge. From an American recipe site.',
     servings: 4,
+    measureStandard: 'us',
     keepsForDays: 1,
     prepMinutes: 10,
     cookMinutes: 15,

@@ -19,11 +19,21 @@ export type UnitSystem = 'metric' | 'imperial';
 export type MeasureStandard = 'metric' | 'au' | 'us';
 
 export interface UnitOptions {
+  /** The cup and spoon sizes in use (the household's, or the recipe's when converting from it). */
   standard?: MeasureStandard;
 }
 
+export function isSpoonUnit(unit: KnownUnit): unit is SpoonUnit {
+  return unit === 'tsp' || unit === 'tbsp' || unit === 'cup';
+}
+
+/** Size of one cup or spoon in millilitres under a standard. */
+export function spoonSize(unit: SpoonUnit, standard: MeasureStandard): number {
+  return SPOONS[standard][unit];
+}
+
 type FixedUnit = 'g' | 'kg' | 'oz' | 'lb' | 'ml' | 'l' | 'floz' | 'pint' | 'quart' | 'piece';
-type SpoonUnit = 'tsp' | 'tbsp' | 'cup';
+export type SpoonUnit = 'tsp' | 'tbsp' | 'cup';
 export type KnownUnit = FixedUnit | SpoonUnit;
 
 const FIXED: Record<FixedUnit, { dimension: Dimension; factor: number }> = {
@@ -96,7 +106,7 @@ export function convert(
   quantity: number,
   from: KnownUnit,
   to: KnownUnit,
-  opts: UnitOptions & { density?: number | null } = {},
+  opts: UnitOptions & { density?: number | null; toStandard?: MeasureStandard } = {},
 ): number | null {
   const fromDim = dimensionOf(from);
   const toDim = dimensionOf(to);
@@ -105,7 +115,7 @@ export function convert(
     if (!opts.density || fromDim === 'count' || toDim === 'count') return null;
     base = fromDim === 'volume' ? base * opts.density : base / opts.density;
   }
-  return base / baseFactor(to, opts);
+  return base / baseFactor(to, { standard: opts.toStandard ?? opts.standard });
 }
 
 export interface Measure {

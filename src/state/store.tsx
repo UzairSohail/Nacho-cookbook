@@ -126,7 +126,7 @@ function reducer(state: State, action: Action): State {
 }
 
 function initialState(): State {
-  const settings: Settings = { householdSize: 2, system: 'metric', standard: 'metric' };
+  const settings: Settings = { householdSize: 2, system: 'metric', standard: 'au' };
   const today = new Date().toISOString().slice(0, 10);
   return {
     settings,

@@ -94,7 +94,8 @@ export function generateShoppingList(opts: GenerateOptions): GeneratedList {
         continue;
       }
       let dimension = dimensionOf(known);
-      let total = toBase(qty, known, opts);
+      // Cups and spoons are measured with the recipe's own standard (e.g. US cups).
+      let total = toBase(qty, known, { standard: recipe.measureStandard ?? opts.standard });
       if (dimension === 'volume' && ingredient?.density) {
         // Buy by weight when we know the density, so "1 cup flour" merges with "200 g flour".
         total *= ingredient.density;
