@@ -1,0 +1,71 @@
+# Builds an installable Android test APK.
+# Every pull request push, merge to master or manual run publishes it as a
+# GitHub pre-release called "Test build N", with a direct .apk link to open
+# on a phone.
+name: Android test APK
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npm ci
+
+      # Generates the native Android project from app.json (android/ isn't committed).
+      - run: npx expo prebuild --platform android --no-install
+        env:
+          CI: 1
+
+      # Each build gets a higher version code so it installs over the last one.
+      - run: sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/" android/app/build.gradle
+
+      # Release build signed with the template's debug key: fine for testing,
+      # not for the Play Store. 64-bit ARM only, which covers current phones
+      # and keeps the build fast.
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+
+      - name: Name the APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk nacho-cookbook-test-${{ github.run_number }}.apk
+
+      # A release rather than a workflow artifact: artifacts count toward the
+      # account's Actions storage quota and download as a zip.
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-build-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Test build ${{ github.run_number }}
+          prerelease: true
+          body: |
+            Android test build from ${{ github.sha }}.
+            Download the .apk below on your Android phone and open it to install (allow installs from your browser if asked).
+          files: nacho-cookbook-test-${{ github.run_number }}.apk
