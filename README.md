@@ -20,7 +20,7 @@ Recipes, the plan and the list are still held in memory on each device; syncing 
 ## Connecting Supabase
 
 1. Create a Supabase project and run `supabase/schema.sql` in its SQL Editor.
-2. Copy `.env.example` to `.env.local` and fill in the Project URL and anon key from Project Settings → API.
+2. Put the Project URL and publishable key in `.env` (already set for the household project; use `.env.local` to point at another one).
 3. Restart `npm run web` / `npm run android`.
 
 ## Project layout
