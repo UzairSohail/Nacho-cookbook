@@ -44,6 +44,7 @@ export default function EditRecipeScreen() {
   const c = useTheme();
 
   const fromImport = !existing && imported ? peekPendingImport() : null;
+  const pasted = !!fromImport && imported === 'text';
   const [draft, setDraft] = useState<RecipeDraft>(
     () => (existing ? draftFromRecipe(existing, catalog) : fromImport) ?? emptyDraft(state.settings.householdSize),
   );
@@ -115,7 +116,7 @@ export default function EditRecipeScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen
         options={{
-          title: existing ? 'Edit recipe' : fromImport ? 'Check imported recipe' : 'New recipe',
+          title: existing ? 'Edit recipe' : fromImport ? (pasted ? 'Check pasted recipe' : 'Check imported recipe') : 'New recipe',
           headerRight: () => (
             <Pressable onPress={save} accessibilityRole="button" hitSlop={12} style={{ marginRight: Platform.OS === 'web' ? 16 : 0 }}>
               <Text style={{ color: c.tint, fontFamily: Fonts.bodyBold }}>Save</Text>
@@ -129,10 +130,12 @@ export default function EditRecipeScreen() {
         keyboardShouldPersistTaps="handled">
         {fromImport ? (
           <Card style={styles.gap}>
-            <Text variant="heading">Imported from {hostOf(draft.sourceUrl)}</Text>
+            <Text variant="heading">{pasted ? 'Sorted from your pasted text' : `Imported from ${hostOf(draft.sourceUrl)}`}</Text>
             <Text variant="muted">
-              Check the ingredients and steps, and pick US cups and spoons below if it's an American recipe. Nothing is saved
-              until you press Save.
+              {pasted
+                ? 'Check each line landed in the right place: ingredients, steps and notes. '
+                : 'Check the ingredients and steps. '}
+              Pick US cups and spoons below if it's an American recipe. Nothing is saved until you press Save.
             </Text>
           </Card>
         ) : null}
