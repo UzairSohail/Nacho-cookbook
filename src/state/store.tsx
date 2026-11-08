@@ -14,6 +14,7 @@ import { fortnightDates } from '@/src/core';
 import { useAuth } from '@/src/backend/auth';
 import { SupabaseConnector } from '@/src/backend/sync/connector';
 import { getDatabase } from '@/src/backend/sync/database';
+import { isAuthRejection } from '@/src/backend/sync/upload';
 import { reducer, planEntryId, type Action, type State } from './reducer';
 import { diffState, rowsToState, type Row, type Rows, type TableName } from './rows';
 import { toSql } from './sql';
@@ -24,7 +25,16 @@ export type { Action, Settings, State } from './reducer';
 export type SyncInfo =
   | { mode: 'demo' }
   | { mode: 'local' } // signed in, but sync isn't set up yet
-  | { mode: 'synced'; connected: boolean; uploading: boolean; downloading: boolean; hasSynced: boolean; lastSyncedAt?: Date };
+  | {
+      mode: 'synced';
+      connected: boolean;
+      uploading: boolean;
+      downloading: boolean;
+      hasSynced: boolean;
+      lastSyncedAt?: Date;
+      /** The sync server refused this device's sign-in (a setup problem, not being offline). */
+      authRejected: boolean;
+    };
 
 interface StoreValue {
   state: State;
@@ -147,6 +157,7 @@ function SyncedStore({ db, householdId, children }: { db: CommonPowerSyncDatabas
       downloading: status.dataFlowStatus.downloading,
       hasSynced: status.hasSynced ?? false,
       lastSyncedAt: status.lastSyncedAt,
+      authRejected: isAuthRejection(status.dataFlowStatus.downloadError),
     }),
     [status],
   );

@@ -34,6 +34,8 @@ function Choice<T extends string>({
 function syncLabel(sync: SyncInfo): string {
   if (sync.mode === 'demo') return '';
   if (sync.mode === 'local') return 'Sync isn’t set up yet: changes stay on this device until the app restarts.';
+  if (!sync.connected && sync.authRejected)
+    return 'Can’t sync: the sync server didn’t accept your sign-in, so changes from your household won’t show up yet. Your own changes are saved on this device.';
   if (!sync.connected) return 'Offline. Changes are saved on this device and sync when you’re back online.';
   if (sync.uploading || sync.downloading) return 'Syncing…';
   if (!sync.hasSynced) return 'Connecting…';

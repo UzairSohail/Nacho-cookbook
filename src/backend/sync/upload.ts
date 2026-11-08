@@ -54,3 +54,50 @@ function parseArray(v: unknown): unknown[] {
 export function isPermanentError(code: unknown): boolean {
   return typeof code === 'string' && (/^22...$/.test(code) || /^23...$/.test(code) || code === '42501');
 }
+
+/** PowerSync reports a refused sign-in token as an HTTP 401 / PSYNC_S21xx error. */
+export function isAuthRejection(error: Error | undefined): boolean {
+  return !!error && /\b401\b|unauthori[sz]ed|PSYNC_S21\d\d/i.test(error.message);
+}
+
+/** The parts of a queued PowerSync change the upload needs. */
+export interface QueuedChange {
+  op: 'PUT' | 'PATCH' | 'DELETE';
+  table: string;
+  id: string;
+  opData?: Record<string, unknown>;
+}
+
+export type UploadStep =
+  | { kind: 'upsert'; table: string; rows: Record<string, unknown>[]; changes: QueuedChange[] }
+  | { kind: 'update'; table: string; id: string; values: Record<string, unknown>; change: QueuedChange }
+  | { kind: 'delete'; table: string; id: string; change: QueuedChange };
+
+/**
+ * Groups queued changes into as few requests as possible while keeping their
+ * order: back-to-back inserts into the same table go up as one upsert. A
+ * column missing from one row is sent as null, which is what an insert of
+ * that row means (the device leaves empty columns out). Adding the sample
+ * recipes was ~35 requests one at a time.
+ */
+export function planUpload(changes: QueuedChange[]): UploadStep[] {
+  const steps: UploadStep[] = [];
+  for (const change of changes) {
+    const values = toServerValues(change.table, change.opData);
+    if (change.op === 'PUT') {
+      const row = { ...values, id: change.id };
+      const last = steps[steps.length - 1];
+      if (last?.kind === 'upsert' && last.table === change.table && !last.rows.some((r) => r.id === change.id)) {
+        last.rows.push(row);
+        last.changes.push(change);
+      } else {
+        steps.push({ kind: 'upsert', table: change.table, rows: [row], changes: [change] });
+      }
+    } else if (change.op === 'PATCH') {
+      steps.push({ kind: 'update', table: change.table, id: change.id, values, change });
+    } else {
+      steps.push({ kind: 'delete', table: change.table, id: change.id, change });
+    }
+  }
+  return steps;
+}

@@ -24,7 +24,10 @@ and click **Run**. It should say "Success. No rows returned".
    Supabase, creates PowerSync's database user and the `powersync` publication,
    and saves the connection.
 2. Go to **Client Auth**, choose **Use Supabase Auth**, leave the JWT secret
-   empty, and click **Save and Deploy**.
+   empty, add `authenticated` under **JWT Audience** (Supabase puts that
+   audience in its sign-in tokens), and click **Save and Deploy**. Without the
+   audience, PowerSync refuses every device with `PSYNC_S2105 Unexpected "aud"
+   claim value: "authenticated"` and the app says it can't reach the sync server.
 
 <details>
 <summary>Doing it by hand instead of "Set Up with Supabase"</summary>
