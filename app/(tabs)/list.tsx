@@ -9,6 +9,7 @@ import {
   fortnightDates,
   listToText,
   parseQuantity,
+  today,
   type DateRange,
   type ListItem,
 } from '@/src/core';
@@ -23,13 +24,29 @@ export default function ShoppingListScreen() {
   const [choice, setChoice] = useState<RangeChoice>('fortnight');
   const [newItem, setNewItem] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [showSkipped, setShowSkipped] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
 
-  const days = fortnightDates(new Date().toISOString().slice(0, 10));
+  const days = fortnightDates(today());
   const ranges: Record<RangeChoice, DateRange> = {
     fortnight: { start: days[0], end: days[13] },
     week1: { start: days[0], end: days[6] },
     week2: { start: days[7], end: addDays(days[7], 6) },
+  };
+
+  const short = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const range = ranges[choice];
+  const rangeText = `${short.format(new Date(range.start))} – ${short.format(new Date(range.end))}`;
+
+  const generate = () => {
+    const planned = state.plan.some((e) => e.recipeId && e.date >= range.start && e.date <= range.end);
+    setNote(planned ? null : `Nothing is planned for ${rangeText} yet. Add meals in the Planner first.`);
+    if (planned) dispatch({ type: 'generateList', range });
+  };
+
+  const addItem = () => {
+    if (!newItem.trim()) return;
+    dispatch({ type: 'addItem', name: newItem });
+    setNewItem('');
   };
 
   const amount = (q: number | null, unit: string | null) => {
@@ -43,6 +60,9 @@ export default function ShoppingListScreen() {
   };
 
   const aisles = AISLE_ORDER.filter((a) => state.list.some((i) => i.aisle === a));
+  // Generated lines are keyed "<ingredient id>|<kind>", so staples can be flagged without storing anything extra.
+  const staples = new Set(state.pantry);
+  const isStaple = (item: ListItem) => !!item.key && staples.has(item.key.split('|')[0]);
 
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.content}>
@@ -52,7 +72,10 @@ export default function ShoppingListScreen() {
           {(['fortnight', 'week1', 'week2'] as const).map((r) => (
             <Pressable
               key={r}
-              onPress={() => setChoice(r)}
+              onPress={() => {
+                setChoice(r);
+                setNote(null);
+              }}
               style={[styles.chip, { borderColor: c.tint, backgroundColor: choice === r ? c.tint : 'transparent' }]}>
               <Text style={{ color: choice === r ? c.onTint : c.tint, fontSize: 14 }}>
                 {r === 'fortnight' ? 'Whole fortnight' : r === 'week1' ? 'Week 1' : 'Week 2'}
@@ -62,30 +85,23 @@ export default function ShoppingListScreen() {
         </RNView>
         <Button
           title={state.list.length ? 'Update from plan' : 'Generate list'}
-          onPress={() => dispatch({ type: 'generateList', range: ranges[choice] })}
+          onPress={generate}
         />
-        <Text variant="muted">Updating keeps anything you added or changed by hand.</Text>
+        {note ? <Text style={{ color: c.tint }}>{note}</Text> : null}
+        <Text variant="muted">{rangeText}. Updating keeps anything you added or changed by hand.</Text>
       </Card>
 
-      <RNView style={styles.row}>
+      <RNView style={[styles.row, { flexWrap: 'nowrap' }]}>
         <TextInput
           value={newItem}
           onChangeText={setNewItem}
           placeholder="Add an item"
           accessibilityLabel="Add an item"
-          style={{ flex: 1 }}
-          onSubmitEditing={() => {
-            dispatch({ type: 'addItem', name: newItem });
-            setNewItem('');
-          }}
+          style={{ flex: 1, minWidth: 0 }}
+          returnKeyType="done"
+          onSubmitEditing={addItem}
         />
-        <Button
-          title="Add"
-          onPress={() => {
-            dispatch({ type: 'addItem', name: newItem });
-            setNewItem('');
-          }}
-        />
+        <Button title="Add" onPress={addItem} />
       </RNView>
 
       {aisles.map((aisle) => (
@@ -98,6 +114,7 @@ export default function ShoppingListScreen() {
                 <Row
                   key={item.id}
                   item={item}
+                  staple={isStaple(item)}
                   amount={amount(item.quantity, item.unit)}
                   editing={editingId === item.id}
                   onEdit={() => setEditingId(editingId === item.id ? null : item.id)}
@@ -113,30 +130,29 @@ export default function ShoppingListScreen() {
           <Button title="Clear ticked" kind="secondary" onPress={() => dispatch({ type: 'clearChecked' })} />
         </RNView>
       ) : (
-        <Text variant="muted">Your list is empty. Plan some meals, then generate a list.</Text>
+        <Card style={{ gap: 6 }}>
+          <Text variant="heading">Nothing on the list yet</Text>
+          <Text variant="muted">Plan some meals, pick the dates above and tap Generate list. You can add things by hand too.</Text>
+        </Card>
       )}
 
-      {state.skippedPantry.length ? (
-        <RNView style={styles.gap}>
-          <Pressable onPress={() => setShowSkipped(!showSkipped)}>
-            <Text variant="label">
-              {showSkipped ? '▾' : '▸'} SKIPPED: PANTRY STAPLES ({state.skippedPantry.length})
-            </Text>
-          </Pressable>
-          {showSkipped
-            ? state.skippedPantry.map((s) => (
-                <Text key={s.key} variant="muted">
-                  {s.name} {s.quantity != null ? `(${amount(s.quantity, s.unit)})` : ''}
-                </Text>
-              ))
-            : null}
-        </RNView>
-      ) : null}
     </ScrollView>
   );
 }
 
-function Row({ item, amount, editing, onEdit }: { item: ListItem; amount: string; editing: boolean; onEdit: () => void }) {
+function Row({
+  item,
+  staple,
+  amount,
+  editing,
+  onEdit,
+}: {
+  item: ListItem;
+  staple: boolean;
+  amount: string;
+  editing: boolean;
+  onEdit: () => void;
+}) {
   const { dispatch } = useStore();
   const c = useTheme();
   const [name, setName] = useState(item.name);
@@ -159,6 +175,7 @@ function Row({ item, amount, editing, onEdit }: { item: ListItem; amount: string
             {amount ? <Text style={{ fontWeight: '600' }}>{amount} </Text> : null}
             {item.name}
           </Text>
+          {staple ? <Text variant="muted" style={{ color: c.accent }}>Pantry staple: check the cupboard first</Text> : null}
           {item.sources.length ? <Text variant="muted">{item.sources.join(', ')}</Text> : null}
         </Pressable>
       </RNView>

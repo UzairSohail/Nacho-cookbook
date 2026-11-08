@@ -28,12 +28,12 @@ export default function RecipesScreen() {
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search by name, tag or ingredient"
+          placeholder="Search recipes"
           accessibilityLabel="Search recipes"
           style={styles.search}
         />
-        <Button title="Import" kind="secondary" accessibilityLabel="Import a recipe from a website or pasted text" onPress={() => router.push('/import-recipe')} />
-        <Button title="+ Add" accessibilityLabel="Add a recipe" onPress={() => router.push('/edit-recipe')} />
+        <Button title="Import" kind="secondary" style={styles.topButton} accessibilityLabel="Import a recipe from a website or pasted text" onPress={() => router.push('/import-recipe')} />
+        <Button title="+ Add" style={styles.topButton} accessibilityLabel="Add a recipe" onPress={() => router.push('/edit-recipe')} />
       </RNView>
       <FlatList
         data={recipes}
@@ -82,9 +82,20 @@ export default function RecipesScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  top: { flexDirection: 'row', gap: 8, margin: 16, marginBottom: 8, alignItems: 'center' },
-  search: { flex: 1 },
-  list: { padding: 16, paddingTop: 8, gap: 12 },
+  top: {
+    flexDirection: 'row',
+    gap: 8,
+    padding: 16,
+    paddingBottom: 8,
+    alignItems: 'center',
+    maxWidth: 760,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  // minWidth 0 lets the box shrink on a narrow phone so both buttons stay on screen.
+  search: { flex: 1, minWidth: 0 },
+  list: { padding: 16, paddingTop: 8, paddingBottom: 32, gap: 12, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  topButton: { paddingHorizontal: 14 },
   card: { flexDirection: 'row', gap: 14, alignItems: 'center' },
   photo: { width: 64, height: 64 },
 });

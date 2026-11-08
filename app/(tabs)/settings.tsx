@@ -1,6 +1,8 @@
 import { Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
-import { Button, Card, Stepper, Text, useTheme } from '@/components/Themed';
+import { useState } from 'react';
+
+import { Button, Card, Stepper, Text, TextInput, useTheme } from '@/components/Themed';
 import { useAuth } from '@/src/backend/auth';
 import type { MeasureStandard, UnitSystem } from '@/src/core';
 import { useStore, type SyncInfo } from '@/src/state/store';
@@ -47,7 +49,13 @@ export default function SettingsScreen() {
   const auth = useAuth();
   const c = useTheme();
   const { settings } = state;
-  const ingredients = [...state.ingredients].sort((a, b) => a.name.localeCompare(b.name));
+  const [find, setFind] = useState('');
+  const staples = new Set(state.pantry);
+  const q = find.trim().toLowerCase();
+  // Staples first so they're easy to review; the rest only once you search, since the list grows with every recipe.
+  const ingredients = [...state.ingredients]
+    .filter((i) => (q ? i.name.toLowerCase().includes(q) : staples.has(i.id)))
+    .sort((a, b) => Number(staples.has(b.id)) - Number(staples.has(a.id)) || a.name.localeCompare(b.name));
 
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.content}>
@@ -97,7 +105,13 @@ export default function SettingsScreen() {
 
       <Card style={styles.gap}>
         <Text variant="label">PANTRY STAPLES</Text>
-        <Text variant="muted">Ticked items are always in the house, so they're left off the shopping list.</Text>
+        <Text variant="muted">
+          Things you usually keep in the house. They stay on the shopping list, marked so you can check the cupboard
+          before you buy more.
+        </Text>
+        <TextInput value={find} onChangeText={setFind} placeholder="Find an ingredient to add" accessibilityLabel="Find an ingredient" />
+        {!q && ingredients.length === 0 ? <Text variant="muted">No staples yet. Search above to add some.</Text> : null}
+        {q && ingredients.length === 0 ? <Text variant="muted">No ingredients match “{find}”.</Text> : null}
         {ingredients.map((i) => {
           const on = state.pantry.includes(i.id);
           return (

@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { buildBatches, entryRoles, fortnightDates, mondayOf } from '../planner';
+import { buildBatches, entryRoles, fortnightDates, mondayOf, today } from '../planner';
 import type { PlanEntry } from '../types';
 import { recipes } from './fixtures';
 
 describe('dates', () => {
+  it("uses the device's own date for today, not UTC", () => {
+    expect(today(new Date(2026, 10, 9, 7, 30))).toBe('2026-11-09');
+    expect(today(new Date(2026, 10, 8, 23, 59))).toBe('2026-11-08');
+  });
+
   it('finds the Monday', () => {
     expect(mondayOf('2026-11-08')).toBe('2026-11-02'); // Sunday -> previous Monday
     expect(mondayOf('2026-11-09')).toBe('2026-11-09');

@@ -146,7 +146,7 @@ export function listItemRow(i: ListItem, householdId: string): Row {
 
 // ---- rows -> app types ----------------------------------------------------
 
-export function rowsToState(rows: Rows, householdId: string, skippedPantry: State['skippedPantry'] = []): State {
+export function rowsToState(rows: Rows, householdId: string): State {
   const household = rows.households.find((h) => h.id === householdId);
   const settings: Settings = {
     householdSize: num(household?.household_size) ?? 2,
@@ -225,7 +225,6 @@ export function rowsToState(rows: Rows, householdId: string, skippedPantry: Stat
       sources: parseList(i.sources),
     })),
     dismissedKeys: rows.shopping_dismissed.map((d) => String(d.key)),
-    skippedPantry,
   };
 }
 

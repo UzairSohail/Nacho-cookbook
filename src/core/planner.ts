@@ -18,6 +18,15 @@ export function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Today's date (YYYY-MM-DD) on this device's clock. Not UTC: in an Australian
+ * morning the UTC date is still yesterday, which would show the wrong week.
+ */
+export function today(now = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 export function addDays(iso: string, days: number): string {
   const d = parseDate(iso);
   d.setUTCDate(d.getUTCDate() + days);
