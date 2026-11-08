@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, View as RNView } from 'react-native';
 
-import { Button, Card, Text, TextInput, useTheme } from '@/components/Themed';
+import { Button, Card, Chip, Text, TextInput, useTheme } from '@/components/Themed';
 import {
   addDays,
   AISLE_ORDER,
@@ -70,17 +70,16 @@ export default function ShoppingListScreen() {
         <Text variant="label">MAKE A LIST FROM THE PLAN</Text>
         <RNView style={styles.row}>
           {(['fortnight', 'week1', 'week2'] as const).map((r) => (
-            <Pressable
+            <Chip
               key={r}
+              role="radio"
+              label={r === 'fortnight' ? 'Whole fortnight' : r === 'week1' ? 'Week 1' : 'Week 2'}
+              selected={choice === r}
               onPress={() => {
                 setChoice(r);
                 setNote(null);
               }}
-              style={[styles.chip, { borderColor: c.tint, backgroundColor: choice === r ? c.tint : 'transparent' }]}>
-              <Text style={{ color: choice === r ? c.onTint : c.tint, fontSize: 14 }}>
-                {r === 'fortnight' ? 'Whole fortnight' : r === 'week1' ? 'Week 1' : 'Week 2'}
-              </Text>
-            </Pressable>
+            />
           ))}
         </RNView>
         <Button
@@ -210,7 +209,6 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 16, paddingBottom: 48, maxWidth: 760, width: '100%', alignSelf: 'center' },
   gap: { gap: 8 },
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
-  chip: { borderWidth: 1.5, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
   item: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, gap: 8 },
   itemRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   check: { width: 28, height: 28, borderRadius: 8, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },

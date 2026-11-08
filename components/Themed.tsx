@@ -98,6 +98,53 @@ export function TextInput({ style, onFocus, onBlur, ...rest }: TextInputProps) {
   );
 }
 
+/**
+ * A pill-shaped choice or toggle. One look everywhere: filled when selected.
+ * `tone="accent"` (green) is for on/off toggles; the default tint is for picking one of several.
+ */
+export function Chip({
+  label,
+  selected,
+  onPress,
+  tone = 'tint',
+  small,
+  role = 'button',
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  tone?: 'tint' | 'accent';
+  small?: boolean;
+  role?: 'button' | 'radio' | 'switch';
+}) {
+  const c = useTheme();
+  const color = tone === 'accent' ? c.accent : c.tint;
+  return (
+    <Pressable
+      accessibilityRole={role}
+      accessibilityState={role === 'button' ? { selected } : role === 'radio' ? { selected, checked: selected } : { checked: selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.chip,
+        small && styles.chipSmall,
+        {
+          borderColor: selected ? color : tone === 'accent' ? c.border : color,
+          backgroundColor: selected ? color : 'transparent',
+          opacity: pressed ? 0.7 : 1,
+        },
+      ]}>
+      <DefaultText
+        style={{
+          color: selected ? c.onTint : tone === 'accent' ? c.text : color,
+          fontFamily: Fonts.bodyMedium,
+          fontSize: small ? 13 : 14,
+        }}>
+        {label}
+      </DefaultText>
+    </Pressable>
+  );
+}
+
 /** A minus / value / plus control, e.g. for servings. */
 export function Stepper({
   value,
@@ -150,5 +197,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  chip: {
+    minHeight: 36,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipSmall: { minHeight: 32, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16 },
   stepValue: { minWidth: 96, textAlign: 'center', fontFamily: Fonts.bodyMedium },
 });

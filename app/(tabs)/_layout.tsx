@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import type { ColorValue } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
@@ -15,13 +16,16 @@ const icon = (name: IconName) =>
 
 export default function TabLayout() {
   const c = Colors[useColorScheme()];
+  const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: c.tint,
         tabBarInactiveTintColor: c.tabIconDefault,
         headerTitleStyle: { fontFamily: Fonts.title, fontSize: 22 },
-        tabBarLabelStyle: { fontFamily: Fonts.bodyMedium },
+        // The default 49 px bar squeezes Inter labels and clips their descenders (the g in Shopping).
+        tabBarStyle: { height: 58 + insets.bottom },
+        tabBarLabelStyle: { fontFamily: Fonts.bodyMedium, fontSize: 12, lineHeight: 16 },
         // Avoid a hydration mismatch from statically rendering the header on web.
         headerShown: useClientOnlyValue(false, true),
       }}>

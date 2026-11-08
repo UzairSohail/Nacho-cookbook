@@ -28,7 +28,7 @@ export default function RecipesScreen() {
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search recipes"
+          placeholder="Search"
           accessibilityLabel="Search recipes"
           style={styles.search}
         />

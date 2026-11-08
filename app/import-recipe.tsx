@@ -89,7 +89,7 @@ export default function ImportRecipeScreen() {
           {(
             [
               ['url', 'From a website'],
-              ['text', 'Paste the recipe'],
+              ['text', 'Paste text'],
             ] as const
           ).map(([m, label]) => (
             <Pressable
@@ -98,7 +98,9 @@ export default function ImportRecipeScreen() {
               accessibilityState={{ selected: mode === m }}
               onPress={() => switchTo(m)}
               style={[styles.tab, mode === m && { backgroundColor: c.tint }]}>
-              <Text style={{ color: mode === m ? '#fff' : c.text, textAlign: 'center' }}>{label}</Text>
+              <Text numberOfLines={1} style={{ color: mode === m ? c.onTint : c.text, textAlign: 'center', fontSize: 15 }}>
+                {label}
+              </Text>
             </Pressable>
           ))}
         </RNView>
@@ -209,6 +211,6 @@ const styles = StyleSheet.create({
   gap: { gap: 10 },
   row: { flexDirection: 'row', gap: 12, alignItems: 'center', flexWrap: 'wrap' },
   tabs: { flexDirection: 'row', borderWidth: 1, borderRadius: 999, padding: 4, gap: 4 },
-  tab: { flex: 1, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999 },
+  tab: { flex: 1, paddingVertical: 8, paddingHorizontal: 8, borderRadius: 999 },
   paste: { minHeight: 260, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' },
 });

@@ -1,9 +1,9 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
+import { KeyboardAvoidingView, Platform, useWindowDimensions, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
 import { PhotoField } from '@/components/PhotoField';
-import { Button, Card, Text, TextInput, View, useTheme } from '@/components/Themed';
+import { Button, Card, Chip, Text, TextInput, View, useTheme } from '@/components/Themed';
 import { Fonts } from '@/constants/Colors';
 import {
   blankHeading,
@@ -42,6 +42,8 @@ export default function EditRecipeScreen() {
   const existing = useRecipeMap().get(id ?? '');
   const catalog = useCatalog();
   const c = useTheme();
+  // Servings/prep/cook/keeps: two per row on a phone, all four on one row on a wide screen.
+  const statStyle = [styles.stat, { flexBasis: useWindowDimensions().width < 560 ? '40%' : '20%' }];
 
   const fromImport = !existing && imported ? peekPendingImport() : null;
   const pasted = !!fromImport && imported === 'text';
@@ -167,8 +169,9 @@ export default function EditRecipeScreen() {
           />
         </Field>
 
-        <RNView style={styles.row}>
-          <Field label="SERVINGS" error={errors?.servings} style={styles.small}>
+        {/* Labels are kept to one line so the boxes line up. */}
+        <RNView style={styles.stats}>
+          <Field label="SERVINGS" error={errors?.servings} style={statStyle}>
             <TextInput
               value={draft.servings}
               onChangeText={(servings) => set({ servings })}
@@ -176,7 +179,7 @@ export default function EditRecipeScreen() {
               accessibilityLabel="Servings"
             />
           </Field>
-          <Field label="PREP (MIN)" error={errors?.prepMinutes} style={styles.small}>
+          <Field label="PREP (MIN)" error={errors?.prepMinutes} style={statStyle}>
             <TextInput
               value={draft.prepMinutes}
               onChangeText={(prepMinutes) => set({ prepMinutes })}
@@ -184,7 +187,7 @@ export default function EditRecipeScreen() {
               accessibilityLabel="Prep time in minutes"
             />
           </Field>
-          <Field label="COOK (MIN)" error={errors?.cookMinutes} style={styles.small}>
+          <Field label="COOK (MIN)" error={errors?.cookMinutes} style={statStyle}>
             <TextInput
               value={draft.cookMinutes}
               onChangeText={(cookMinutes) => set({ cookMinutes })}
@@ -192,7 +195,7 @@ export default function EditRecipeScreen() {
               accessibilityLabel="Cook time in minutes"
             />
           </Field>
-          <Field label="KEEPS (DAYS)" error={errors?.keepsForDays} style={styles.small}>
+          <Field label="KEEPS (DAYS)" error={errors?.keepsForDays} style={statStyle}>
             <TextInput
               value={draft.keepsForDays}
               onChangeText={(keepsForDays) => set({ keepsForDays })}
@@ -206,8 +209,8 @@ export default function EditRecipeScreen() {
         <RNView style={styles.gap}>
           <Text variant="label">CUPS AND SPOONS</Text>
           <RNView style={styles.row}>
-            <Chip label="Ours" on={!draft.usMeasures} onPress={() => set({ usMeasures: false })} />
-            <Chip label="US (American recipe)" on={draft.usMeasures} onPress={() => set({ usMeasures: true })} />
+            <Chip role="radio" label="Ours" selected={!draft.usMeasures} onPress={() => set({ usMeasures: false })} />
+            <Chip role="radio" label="US (American recipe)" selected={draft.usMeasures} onPress={() => set({ usMeasures: true })} />
           </RNView>
           <Text variant="muted">
             Pick US for recipes from American sites, so spoons are converted and cups are labelled.
@@ -362,15 +365,22 @@ function IngredientsEditor({
             move={(to) => set({ lines: move(lines, i, to) })}
             remove={() => set({ lines: lines.filter((x) => x.key !== l.key) })}>
             {l.kind === 'ingredient' ? (
-              <Chip label="Optional" on={l.optional} onPress={() => setLine(l.key, { optional: !l.optional })} small />
+              <Chip
+                role="switch"
+                tone="accent"
+                label="Optional"
+                selected={l.optional}
+                onPress={() => setLine(l.key, { optional: !l.optional })}
+                small
+              />
             ) : null}
           </RowTools>
         </Card>
       ))}
       <RNView style={styles.row}>
-        <Button title="Add ingredient" kind="secondary" onPress={() => set({ lines: [...lines, blankIngredient()] })} />
-        <Button title="Add section" kind="secondary" onPress={() => set({ lines: [...lines, blankHeading()] })} />
-        <Button title="Paste a list" kind="secondary" onPress={() => setPasting((p) => !p)} />
+        <Button title="Add ingredient" kind="secondary" style={styles.grow} onPress={() => set({ lines: [...lines, blankIngredient()] })} />
+        <Button title="Add section" kind="secondary" style={styles.grow} onPress={() => set({ lines: [...lines, blankHeading()] })} />
+        <Button title="Paste a list" kind="secondary" style={styles.grow} onPress={() => setPasting((p) => !p)} />
       </RNView>
       {pasting ? (
         <Card style={styles.gap}>
@@ -456,8 +466,10 @@ function StepsEditor({
             remove={() => set({ steps: steps.filter((x) => x.key !== s.key) })}>
             {!s.photo ? (
               <Chip
+                role="switch"
+                tone="accent"
                 label="Photo"
-                on={photoOpen.has(s.key)}
+                selected={photoOpen.has(s.key)}
                 small
                 onPress={() =>
                   setPhotoOpen((open) => {
@@ -473,8 +485,8 @@ function StepsEditor({
         </Card>
       ))}
       <RNView style={styles.row}>
-        <Button title="Add step" kind="secondary" onPress={() => set({ steps: [...steps, blankStep()] })} />
-        <Button title="Paste steps" kind="secondary" onPress={() => setPasting((p) => !p)} />
+        <Button title="Add step" kind="secondary" style={styles.grow} onPress={() => set({ steps: [...steps, blankStep()] })} />
+        <Button title="Paste steps" kind="secondary" style={styles.grow} onPress={() => setPasting((p) => !p)} />
       </RNView>
       {pasting ? (
         <Card style={styles.gap}>
@@ -543,28 +555,13 @@ function IconButton({ label, a11y, onPress, disabled }: { label: string; a11y: s
   );
 }
 
-function Chip({ label, on, onPress, small }: { label: string; on: boolean; onPress: () => void; small?: boolean }) {
-  const c = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="switch"
-      accessibilityState={{ checked: on }}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.chip,
-        small && styles.chipSmall,
-        { borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accent : 'transparent', opacity: pressed ? 0.7 : 1 },
-      ]}>
-      <Text style={{ color: on ? c.onTint : c.text, fontFamily: Fonts.bodyMedium, fontSize: small ? 13 : 15 }}>{label}</Text>
-    </Pressable>
-  );
-}
-
 function Field({ label, error, style, children }: { label: string; error?: string; style?: object; children: ReactNode }) {
   const c = useTheme();
   return (
     <RNView style={[styles.field, style]}>
-      <Text variant="label">{label}</Text>
+      <Text variant="label" numberOfLines={1}>
+        {label}
+      </Text>
       {children}
       {error ? <Text style={{ color: c.tint }}>{error}</Text> : null}
     </RNView>
@@ -577,7 +574,10 @@ const styles = StyleSheet.create({
   gap: { gap: 10 },
   field: { gap: 6 },
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  small: { flexGrow: 1, flexBasis: 72 },
+  stats: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 16 },
+  stat: { flexGrow: 1 },
+  // Buttons that share a row fill it evenly, so a wrapped one doesn't sit alone on the left.
+  grow: { flexGrow: 1 },
   multiline: { minHeight: 72, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' },
   paste: { minHeight: 140, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' },
   lineCard: { gap: 8, padding: 12 },
@@ -586,6 +586,4 @@ const styles = StyleSheet.create({
   name: { flex: 1, minWidth: 120 },
   stepNum: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
   iconBtn: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  chip: { minHeight: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  chipSmall: { minHeight: 32, paddingHorizontal: 10 },
 });
