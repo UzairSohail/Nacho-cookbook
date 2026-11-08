@@ -9,6 +9,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors, { Fonts } from '@/constants/Colors';
 import { AuthProvider, useAuth } from '@/src/backend/auth';
+import { startPhotoSync } from '@/src/photos/photoStore';
 import { StoreProvider } from '@/src/state/store';
 
 export { ErrorBoundary } from 'expo-router';
@@ -27,6 +28,9 @@ export default function RootLayout() {
   useEffect(() => {
     if (loaded) SplashScreen.hideAsync();
   }, [loaded]);
+
+  // Photos taken offline upload once there's a connection.
+  useEffect(() => startPhotoSync(), []);
 
   if (!loaded) return null;
 

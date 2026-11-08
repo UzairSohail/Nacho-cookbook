@@ -35,6 +35,8 @@ export type DraftLine = IngredientLine | HeadingLine;
 export interface StepLine {
   key: string;
   text: string;
+  /** Photo path or web address. */
+  photo?: string;
 }
 
 export interface RecipeDraft {
@@ -53,8 +55,8 @@ export interface RecipeDraft {
   notes: string;
   lines: DraftLine[];
   steps: StepLine[];
-  /** Photo found by URL import; the editor doesn't show photos yet. */
-  photoUrls?: string[];
+  /** Cover photo first. Paths in the household's photo storage, or web addresses (imported photos). */
+  photoUrls: string[];
 }
 
 const key = () => uuid();
@@ -68,7 +70,7 @@ export const blankStep = (): StepLine => ({ key: key(), text: '' });
 export function emptyDraft(servings = 4): RecipeDraft {
   return {
     title: '', description: '', servings: String(servings), prepMinutes: '', cookMinutes: '', keepsForDays: '',
-    usMeasures: false, tags: '', sourceUrl: '', notes: '',
+    usMeasures: false, tags: '', sourceUrl: '', notes: '', photoUrls: [],
     lines: [blankIngredient(), blankIngredient(), blankIngredient()],
     steps: [blankStep()],
   };
@@ -113,8 +115,11 @@ export function draftFromRecipe(recipe: Recipe, catalog: Map<string, Ingredient>
     tags: (recipe.tags ?? []).join(', '),
     sourceUrl: recipe.sourceUrl ?? '',
     notes: recipe.notes ?? '',
+    photoUrls: recipe.photoUrls ?? [],
     lines: lines.length ? lines : [blankIngredient()],
-    steps: recipe.steps.length ? recipe.steps.map((s) => ({ key: key(), text: s.text })) : [blankStep()],
+    steps: recipe.steps.length
+      ? recipe.steps.map((s) => ({ key: key(), text: s.text, photo: s.photoUrl }))
+      : [blankStep()],
   };
 }
 
@@ -199,7 +204,7 @@ export function validateDraft(d: RecipeDraft): DraftErrors {
 
 /**
  * The recipe to save. Call validateDraft first. Fields the editor doesn't
- * show (photos, favourite) are kept from `base`.
+ * show (favourite) are kept from `base`.
  */
 export function draftToRecipe(d: RecipeDraft, base?: Recipe): RecipeInput {
   const opt = (s: string) => s.trim() || undefined;
@@ -235,17 +240,16 @@ export function draftToRecipe(d: RecipeDraft, base?: Recipe): RecipeInput {
     keepsForDays: int(d.keepsForDays) ?? null,
     prepMinutes: int(d.prepMinutes),
     cookMinutes: int(d.cookMinutes),
-    photoUrls: base?.photoUrls ?? d.photoUrls ?? [],
+    photoUrls: d.photoUrls.filter(Boolean),
     tags,
     sourceUrl: opt(d.sourceUrl),
     notes: opt(d.notes),
     favourite: base?.favourite ?? false,
     ingredients,
-    steps: d.steps.map((s) => s.text.trim()).filter(Boolean).map((text, i) => ({
-      text,
-      // Step photos stay with their step position until photo editing arrives.
-      photoUrl: base?.steps[i]?.photoUrl,
-    })),
+    // A step with only a photo is kept; one with neither text nor photo is dropped.
+    steps: d.steps
+      .filter((s) => s.text.trim() || s.photo)
+      .map((s) => ({ text: s.text.trim(), photoUrl: s.photo || undefined })),
   };
 }
 
@@ -277,6 +281,6 @@ export function draftFromImport(r: ImportedRecipe, householdSize = 4): RecipeDra
     notes: r.notes ?? '',
     lines: lines.length ? lines : [blankIngredient()],
     steps: steps.length ? steps : [blankStep()],
-    photoUrls: r.imageUrl ? [r.imageUrl] : undefined,
+    photoUrls: r.imageUrl ? [r.imageUrl] : [],
   };
 }
