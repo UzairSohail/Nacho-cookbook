@@ -2,7 +2,7 @@ import { Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native'
 
 import { useState } from 'react';
 
-import { Button, Card, Stepper, Text, TextInput, useTheme } from '@/components/Themed';
+import { Button, Card, Chip, Stepper, Text, TextInput, useTheme } from '@/components/Themed';
 import { useAuth } from '@/src/backend/auth';
 import type { MeasureStandard, UnitSystem } from '@/src/core';
 import { useStore, type SyncInfo } from '@/src/state/store';
@@ -20,14 +20,7 @@ function Choice<T extends string>({
   return (
     <RNView style={styles.row}>
       {options.map(([key, label]) => (
-        <Pressable
-          key={key}
-          accessibilityRole="radio"
-          accessibilityState={{ selected: value === key }}
-          onPress={() => onChange(key)}
-          style={[styles.chip, { borderColor: c.tint, backgroundColor: value === key ? c.tint : 'transparent' }]}>
-          <Text style={{ color: value === key ? c.onTint : c.tint, fontSize: 14 }}>{label}</Text>
-        </Pressable>
+        <Chip key={key} label={label} role="radio" selected={value === key} onPress={() => onChange(key)} />
       ))}
     </RNView>
   );
@@ -137,7 +130,6 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 16, paddingBottom: 48, maxWidth: 760, width: '100%', alignSelf: 'center' },
   gap: { gap: 10 },
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  chip: { borderWidth: 1.5, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
   staple: { flexDirection: 'row', gap: 12, alignItems: 'center', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   check: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
 });

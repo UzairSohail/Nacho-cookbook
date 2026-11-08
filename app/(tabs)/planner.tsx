@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native'
 
 import { router } from 'expo-router';
 
-import { Button, Card, Stepper, Text, TextInput, useTheme } from '@/components/Themed';
+import { Button, Card, Chip, Stepper, Text, TextInput, useTheme } from '@/components/Themed';
 import { addDays, buildBatches, today, entryRoles, fortnightDates, formatFraction, MEAL_SLOTS, type MealSlot } from '@/src/core';
 import { useRecipeMap, useStore } from '@/src/state/store';
 
@@ -88,16 +88,21 @@ export default function PlannerScreen() {
                   <RNView style={{ flex: 1 }}>
                     <Text style={recipe ? undefined : { color: c.textMuted }}>{recipe?.title ?? 'Add a meal'}</Text>
                     {entry && role ? (
-                      <Text variant="muted">
-                        {entry.servings} serving{entry.servings === 1 ? '' : 's'} ·{' '}
+                      // Two pieces that wrap as whole phrases on a narrow phone.
+                      <RNView style={styles.meta}>
+                        <Text variant="muted">
+                          {entry.servings} serving{entry.servings === 1 ? '' : 's'} ·
+                        </Text>
                         {role.kind === 'cook' ? (
-                          <Text style={{ color: c.tint }}>
+                          <Text variant="muted" style={{ color: c.tint }}>
                             Cook {formatFraction(role.batch.factor)}× ({role.batch.servings} servings)
                           </Text>
                         ) : (
-                          <Text style={{ color: c.accent }}>Leftovers</Text>
+                          <Text variant="muted" style={{ color: c.accent }}>
+                            Leftovers
+                          </Text>
                         )}
-                      </Text>
+                      </RNView>
                     ) : null}
                   </RNView>
                 </Pressable>
@@ -129,15 +134,12 @@ export default function PlannerScreen() {
                       {choices.map((r) => {
                         const selected = r.id === entry?.recipeId;
                         return (
-                          <Pressable
+                          <Chip
                             key={r.id}
+                            label={r.title}
+                            selected={selected}
                             onPress={() => dispatch({ type: 'setMeal', date, slot, recipeId: r.id, servings: entry?.servings })}
-                            style={[
-                              styles.chip,
-                              { borderColor: c.tint, backgroundColor: selected ? c.tint : 'transparent' },
-                            ]}>
-                            <Text style={{ color: selected ? c.onTint : c.tint, fontSize: 14 }}>{r.title}</Text>
-                          </Pressable>
+                          />
                         );
                       })}
                     </RNView>
@@ -170,8 +172,8 @@ const styles = StyleSheet.create({
   dayTitle: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
   slot: { flexDirection: 'row', gap: 12, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, minHeight: 48 },
   slotLabel: { width: 88, paddingTop: 3 },
+  meta: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 4 },
   picker: { gap: 12, paddingBottom: 12 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderWidth: 1.5, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
 });
 
