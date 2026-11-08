@@ -1,9 +1,12 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Link, router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
+
+import InstagramCaptionReader from '@/components/InstagramCaptionReader';
 
 import { Button, Card, Text, TextInput, useTheme } from '@/components/Themed';
+import { captionFromEmbedHtml, instagramPost, type InstagramPost } from '@/src/core/instagram';
 import { importRecipe, ImportError } from '@/src/import/importRecipe';
 import { NoRecipeTextError, parseRecipeText } from '@/src/core/recipeText';
 import { checkUrl } from '@/src/import/pageFetch';
@@ -20,6 +23,11 @@ type Mode = 'url' | 'photo' | 'text';
  * read into the paste box first, so misread words can be fixed. Every way, the
  * recipe opens in the editor to check before saving. Pages and text shared
  * from other apps arrive here too, as the url, or text and source, params.
+ *
+ * Instagram posts are different: the recipe is usually in the caption, which
+ * the Instagram app won't let you copy. On Android the caption is read from
+ * the post's public embed page into the paste box. The web app can't read it,
+ * so it offers that page for copying the caption by hand.
  */
 export default function ImportRecipeScreen() {
   const params = useLocalSearchParams<{ mode?: string; url?: string; text?: string; source?: string }>();
@@ -34,6 +42,12 @@ export default function ImportRecipeScreen() {
   const [failedUrl, setFailedUrl] = useState<string | null>(params.source || null);
   /** How many photos have been read into the text box. */
   const [photoPages, setPhotoPages] = useState(0);
+  /** The Instagram post whose caption is being read on Android. */
+  const [reading, setReading] = useState<InstagramPost | null>(null);
+  /** An Instagram post whose caption the app couldn't read, for the copy-it-yourself help. */
+  const [instagramHelp, setInstagramHelp] = useState<InstagramPost | null>(null);
+  /** The paste box holds an Instagram caption. */
+  const [fromInstagram, setFromInstagram] = useState(false);
 
   // Already saved from this page? Compare without the trailing slash or query.
   const sameAddress = (a: string) => {
@@ -49,8 +63,19 @@ export default function ImportRecipeScreen() {
 
   const go = async (address: string = url) => {
     if (!address.trim() || busy) return;
-    setBusy(true);
     setError(null);
+    setInstagramHelp(null);
+    const post = instagramPost(address);
+    if (post) {
+      setFailedUrl(post.url);
+      if (Platform.OS === 'web') setInstagramHelp(post);
+      else {
+        setBusy(true);
+        setReading(post);
+      }
+      return;
+    }
+    setBusy(true);
     try {
       const recipe = await importRecipe(address);
       setPendingImport(draftFromImport(recipe, state.settings.householdSize));
@@ -64,6 +89,21 @@ export default function ImportRecipeScreen() {
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const captionRead = (html: string | null) => {
+    const post = reading;
+    setReading(null);
+    setBusy(false);
+    const caption = html ? captionFromEmbedHtml(html) : null;
+    if (caption) {
+      setText(caption);
+      setFromInstagram(true);
+      setPhotoPages(0);
+      setMode('text');
+    } else if (post) {
+      setInstagramHelp(post);
     }
   };
 
@@ -121,6 +161,7 @@ export default function ImportRecipeScreen() {
       }
       setText((t) => [t.trim(), ...pages].filter(Boolean).join('\n\n'));
       setPhotoPages((n) => n + pages.length);
+      setFromInstagram(false);
       setMode('text');
     } catch (e) {
       setError(e instanceof PhotoTextError ? e.message : 'Something went wrong reading that picture. Try again, or add it by hand.');
@@ -162,14 +203,15 @@ export default function ImportRecipeScreen() {
         {mode === 'url' ? (
           <>
             <Text variant="muted">
-              Paste the address of a recipe page. The app finds the recipe among the story and ads, and opens it for you to
-              check before saving.
+              Paste the address of a recipe page or an Instagram post. The app finds the recipe among the story and ads, and
+              opens it for you to check before saving.
             </Text>
             <TextInput
               value={url}
               onChangeText={(t) => {
                 setUrl(t);
                 setError(null);
+                setInstagramHelp(null);
               }}
               placeholder="https://www.example.com/best-lasagne"
               accessibilityLabel="Recipe web address"
@@ -190,6 +232,27 @@ export default function ImportRecipeScreen() {
                 from this page. Importing again adds a second copy.
               </Text>
             ) : null}
+            {reading ? <InstagramCaptionReader embedUrl={reading.embedUrl} onDone={captionRead} /> : null}
+            {instagramHelp ? (
+              <Card style={styles.gap}>
+                <Text style={{ color: c.tint }}>
+                  {Platform.OS === 'web'
+                    ? 'Instagram doesn’t let websites read its posts, so copy the caption yourself.'
+                    : 'Couldn’t read that post’s caption. It may be private or deleted, or the recipe may be in the video rather than the caption.'}
+                </Text>
+                <Text variant="muted">
+                  Open the caption page, select the whole caption, copy it, and paste it here. You can also take a screenshot of
+                  the caption in Instagram and use the Photo tab.
+                </Text>
+                <RNView style={styles.row}>
+                  <Button title="Open the caption page" onPress={() => Linking.openURL(instagramHelp.embedUrl).catch(() => {})} />
+                  <Button title="Paste the caption" kind="secondary" onPress={() => switchTo('text')} />
+                  {Platform.OS !== 'web' ? (
+                    <Button title="Use a screenshot" kind="secondary" onPress={() => switchTo('photo')} />
+                  ) : null}
+                </RNView>
+              </Card>
+            ) : null}
             {error ? (
               <Card style={styles.gap}>
                 <Text style={{ color: c.tint }}>{error}</Text>
@@ -205,7 +268,7 @@ export default function ImportRecipeScreen() {
             ) : null}
             <RNView style={styles.row}>
               <Button
-                title={busy ? 'Finding the recipe…' : 'Find recipe'}
+                title={busy ? (reading ? 'Reading the caption…' : 'Finding the recipe…') : 'Find recipe'}
                 onPress={() => go()}
                 disabled={busy || !url.trim()}
                 style={busy || !url.trim() ? { opacity: 0.5 } : undefined}
@@ -267,7 +330,15 @@ export default function ImportRecipeScreen() {
                 </RNView>
               </Card>
             ) : null}
-            {photoPages === 0 ? (
+            {fromInstagram ? (
+              <Card style={styles.gap}>
+                <Text>
+                  Read from the Instagram caption. Check the text below, then sort it into a recipe. If the ingredients and
+                  steps get mixed up, add &quot;Ingredients&quot; and &quot;Method&quot; lines above them.
+                </Text>
+              </Card>
+            ) : null}
+            {photoPages === 0 && !fromInstagram ? (
               <Text variant="muted">
                 Copy the whole recipe from the website, a message or your notes, and paste it below: name, ingredients, method
                 and notes. The app sorts it into the editor for you to check before saving.
