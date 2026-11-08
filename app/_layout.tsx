@@ -66,6 +66,7 @@ function RootLayoutNav() {
         <Stack.Protected guard={signedIn && inHousehold}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="recipe/[id]" options={{ title: 'Recipe' }} />
+          <Stack.Screen name="edit-recipe" options={{ title: 'New recipe' }} />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

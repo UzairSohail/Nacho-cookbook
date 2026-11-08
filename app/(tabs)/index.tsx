@@ -1,4 +1,4 @@
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View as RNView } from 'react-native';
 
@@ -24,13 +24,16 @@ export default function RecipesScreen() {
 
   return (
     <View style={styles.screen}>
-      <TextInput
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Search by name, tag or ingredient"
-        accessibilityLabel="Search recipes"
-        style={styles.search}
-      />
+      <RNView style={styles.top}>
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search by name, tag or ingredient"
+          accessibilityLabel="Search recipes"
+          style={styles.search}
+        />
+        <Button title="+ Add" accessibilityLabel="Add a recipe" onPress={() => router.push('/edit-recipe')} />
+      </RNView>
       <FlatList
         data={recipes}
         keyExtractor={(r) => r.id}
@@ -43,8 +46,9 @@ export default function RecipesScreen() {
           ) : (
             <Card style={{ gap: 12 }}>
               <Text variant="heading">No recipes yet</Text>
-              <Text variant="muted">Start with a few sample recipes to try the planner and shopping list.</Text>
-              <Button title="Add sample recipes" onPress={() => dispatch({ type: 'addSampleRecipes' })} />
+              <Text variant="muted">Add your own, or start with a few sample recipes to try the planner and shopping list.</Text>
+              <Button title="Add a recipe" onPress={() => router.push('/edit-recipe')} />
+              <Button title="Add sample recipes" kind="secondary" onPress={() => dispatch({ type: 'addSampleRecipes' })} />
             </Card>
           )
         }
@@ -77,7 +81,8 @@ export default function RecipesScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  search: { margin: 16, marginBottom: 8 },
+  top: { flexDirection: 'row', gap: 8, margin: 16, marginBottom: 8, alignItems: 'center' },
+  search: { flex: 1 },
   list: { padding: 16, paddingTop: 8, gap: 12 },
   card: { flexDirection: 'row', gap: 14, alignItems: 'center' },
   photo: { width: 64, height: 64, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

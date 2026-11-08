@@ -5,6 +5,7 @@
  */
 import {
   generateShoppingList,
+  guessAisle,
   reconcileList,
   stableUuid,
   uuid,
@@ -16,6 +17,7 @@ import {
   type MeasureStandard,
   type PlanEntry,
   type Recipe,
+  type RecipeIngredient,
   type UnitSystem,
 } from '@/src/core';
 import { samplePantry, sampleIngredients, sampleRecipes } from './sampleData';
@@ -40,6 +42,11 @@ export interface State {
   skippedPantry: GeneratedItem[];
 }
 
+/** A recipe as the editor saves it: ingredients by name, not by catalog id. */
+export type RecipeInput = Omit<Recipe, 'ingredients'> & {
+  ingredients: Array<Omit<RecipeIngredient, 'ingredientId'> & { name: string }>;
+};
+
 export type Action =
   | { type: 'settings'; patch: Partial<Settings> }
   | { type: 'togglePantry'; ingredientId: string }
@@ -51,7 +58,9 @@ export type Action =
   | { type: 'addItem'; name: string }
   | { type: 'deleteItem'; id: string }
   | { type: 'clearChecked' }
-  | { type: 'addSampleRecipes' };
+  | { type: 'addSampleRecipes' }
+  | { type: 'saveRecipe'; recipe: RecipeInput }
+  | { type: 'deleteRecipe'; id: string };
 
 /** The one plan row for a household's meal slot on a day. */
 export const planEntryId = (householdId: string, date: string, slot: MealSlot) =>
@@ -129,7 +138,50 @@ export function reducer(state: State, action: Action): State {
       return { ...state, list: state.list.filter((i) => !i.checked) };
     case 'addSampleRecipes':
       return withSampleRecipes(state);
+    case 'saveRecipe':
+      return withSavedRecipe(state, action.recipe);
+    case 'deleteRecipe':
+      return {
+        ...state,
+        recipes: state.recipes.filter((r) => r.id !== action.id),
+        // Meals planned with it go too, as they would on the server.
+        plan: state.plan.filter((e) => e.recipeId !== action.id),
+      };
   }
+}
+
+/** Id for an ingredient first added by name, the same on every device so two people adding "Garlic" offline share a row. */
+export const ingredientIdForName = (householdId: string, name: string) =>
+  stableUuid(householdId, 'ingredient', name.trim().toLowerCase());
+
+/**
+ * Adds or replaces a recipe. Ingredient names are matched to the household's
+ * ingredients ignoring case; new ones are added with a guessed aisle.
+ */
+export function withSavedRecipe(state: State, input: RecipeInput): State {
+  const byName = new Map(state.ingredients.map((i) => [i.name.trim().toLowerCase(), i.id]));
+  const ids = new Set(state.ingredients.map((i) => i.id));
+  const ingredients = [...state.ingredients];
+  const resolve = (rawName: string) => {
+    const name = rawName.trim();
+    const key = name.toLowerCase();
+    const existing = byName.get(key);
+    if (existing) return existing;
+    const id = ingredientIdForName(state.householdId, name);
+    if (!ids.has(id)) {
+      ingredients.push({ id, name, aisle: guessAisle(name), density: null });
+      ids.add(id);
+    }
+    byName.set(key, id);
+    return id;
+  };
+  const recipe: Recipe = {
+    ...input,
+    ingredients: input.ingredients.map(({ name, ...rest }) => ({ ...rest, ingredientId: resolve(name) })),
+  };
+  const at = state.recipes.findIndex((r) => r.id === recipe.id);
+  const recipes = at < 0 ? [...state.recipes, recipe] : state.recipes.map((r, i) => (i === at ? recipe : r));
+  return { ...state, ingredients, recipes };
 }
 
 /**
