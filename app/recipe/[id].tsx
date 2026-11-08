@@ -1,8 +1,9 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
 import { Button, Card, Stepper, Text, TextInput, View, useTheme } from '@/components/Themed';
+import { Fonts } from '@/constants/Colors';
 import {
   formatAmount,
   formatFraction,
@@ -73,12 +74,28 @@ export default function RecipeScreen() {
   };
 
   let lastGroup: string | undefined;
+  const editRecipe = () => router.push({ pathname: '/edit-recipe', params: { id: recipe.id } });
+  const facts = [
+    recipe.prepMinutes ? `Prep ${recipe.prepMinutes} min` : '',
+    recipe.cookMinutes ? `Cook ${recipe.cookMinutes} min` : '',
+    recipe.tags?.length ? recipe.tags.join(', ') : '',
+  ].filter(Boolean);
 
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.content}>
-      <Stack.Screen options={{ title: recipe.title }} />
+      <Stack.Screen
+        options={{
+          title: recipe.title,
+          headerRight: () => (
+            <Pressable onPress={editRecipe} accessibilityRole="button" accessibilityLabel="Edit recipe" hitSlop={12} style={{ marginRight: Platform.OS === 'web' ? 16 : 0 }}>
+              <Text style={{ color: c.tint, fontFamily: Fonts.bodyBold }}>Edit</Text>
+            </Pressable>
+          ),
+        }}
+      />
       <Text variant="title">{recipe.title}</Text>
       {recipe.description ? <Text variant="muted">{recipe.description}</Text> : null}
+      {facts.length ? <Text variant="muted">{facts.join(' · ')}</Text> : null}
       {recipe.measureStandard && recipe.measureStandard !== standard ? (
         <Text variant="muted" style={{ color: c.accent }}>
           Written with {recipe.measureStandard === 'us' ? 'US' : recipe.measureStandard === 'au' ? 'Australian' : 'metric'}{' '}
@@ -181,6 +198,16 @@ export default function RecipeScreen() {
           </RNView>
         ))}
       </RNView>
+
+      {recipe.notes ? (
+        <RNView style={styles.gap}>
+          <Text variant="heading">Notes</Text>
+          <Text>{recipe.notes}</Text>
+        </RNView>
+      ) : null}
+      {recipe.sourceUrl ? <Text variant="muted">Source: {recipe.sourceUrl}</Text> : null}
+
+      <Button title="Edit recipe" kind="secondary" onPress={editRecipe} />
     </ScrollView>
   );
 }
