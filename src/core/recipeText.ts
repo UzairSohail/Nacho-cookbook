@@ -7,6 +7,7 @@
  * The result has the same shape as a URL import, so it opens in the editor the
  * same way for the person to check.
  */
+import { looksLikeStepHeading } from './ingredientLine';
 import type { ImportedIngredientGroup, ImportedRecipe, ImportedStepGroup } from './recipeImport';
 
 export class NoRecipeTextError extends Error {
@@ -227,6 +228,8 @@ function subHeading(line: string, section: 'ingredients' | 'method'): string | u
   // Shouted headings, "CHEESECAKE FILLING".
   if (/^[^a-z]*[A-Z]{3}[^a-z]*$/.test(line) && !/\d/.test(line) && line.split(' ').length <= 5) return line;
   if (section === 'ingredients' && /^for (the )?\S/i.test(line) && !/\d/.test(line)) return line;
+  // "Garlic Confit" on its own line between steps.
+  if (section === 'method' && looksLikeStepHeading(line) && !STEP_VERB.test(line)) return line;
   return undefined;
 }
 
@@ -390,6 +393,13 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
       const step = stripStepNumber(l.replace(/^[-•*·]\s*/, ''));
       if (step) instructions[instructions.length - 1].steps.push(step);
     }
+  }
+
+  // A last "heading" with no steps under it was a short step, such as "Enjoy".
+  const lastStepGroup = instructions[instructions.length - 1];
+  if (instructions.length > 1 && !lastStepGroup.steps.length && lastStepGroup.heading) {
+    instructions.pop();
+    instructions[instructions.length - 1].steps.push(lastStepGroup.heading);
   }
 
   const groups = ingredients.filter((g) => g.items.length);
