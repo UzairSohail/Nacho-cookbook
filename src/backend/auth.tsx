@@ -9,7 +9,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isAuthRetryableFetchError, type Session } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { supabase } from './supabase';
+import { Platform } from 'react-native';
+
+import { openedFromResetLink, supabase, WEB_APP_URL } from './supabase';
 import { getDatabase } from './sync/database';
 
 export interface Household {
@@ -41,6 +43,12 @@ interface AuthValue {
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation: boolean }>;
   signOut: () => Promise<void>;
+  /** Emails a link for choosing a new password. */
+  sendPasswordReset: (email: string) => Promise<string | null>;
+  /** True after opening a password reset link, until a new password is saved. */
+  resettingPassword: boolean;
+  updatePassword: (password: string) => Promise<string | null>;
+  cancelPasswordReset: () => void;
   createHousehold: (name: string) => Promise<string | null>;
   joinHousehold: (code: string) => Promise<string | null>;
 }
@@ -69,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(!supabase);
   const [account, setAccount] = useState<Account | null>(null);
   const [household, setHousehold] = useState<Household | null>(null);
+  const [resettingPassword, setResettingPassword] = useState(openedFromResetLink);
 
   /** Looks up the household online, falling back to the one remembered on this device. */
   const loadHousehold = useCallback(async (s: Session | null) => {
@@ -122,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setReady(true);
     })();
     const { data: sub } = client.auth.onAuthStateChange((event, s) => {
+      if (event === 'PASSWORD_RECOVERY') setResettingPassword(true);
       if (event === 'SIGNED_OUT') {
         setAccount(null);
         setHousehold(null);
@@ -164,6 +174,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAccount(null);
         setHousehold(null);
       },
+      async sendPasswordReset(email) {
+        if (!supabase) return 'Sign-in is not set up yet.';
+        if (!email.trim()) return 'Type your email above first.';
+        // The web app is where a new password is chosen, also when asked from the Android app.
+        const redirectTo = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : WEB_APP_URL;
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+        return error ? friendlyError(error.message) : null;
+      },
+      resettingPassword,
+      async updatePassword(password) {
+        if (!supabase) return 'Sign-in is not set up yet.';
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) return friendlyError(error.message);
+        setResettingPassword(false);
+        return null;
+      },
+      cancelPasswordReset() {
+        setResettingPassword(false);
+      },
       async createHousehold(name) {
         if (!supabase) return 'Not connected.';
         const { error } = await supabase.rpc('create_household', { name: name.trim() || 'Our kitchen' });
@@ -179,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       },
     }),
-    [ready, account, household, refresh],
+    [ready, account, household, refresh, resettingPassword],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -196,6 +225,10 @@ function friendlyError(message: string): string {
   if (/email not confirmed/i.test(message)) return 'Please confirm your email first. Check your inbox for the link.';
   if (/invite code not found/i.test(message)) return 'That invite code wasn’t found. Check it and try again.';
   if (/password should be at least/i.test(message)) return 'Use a password of at least 6 characters.';
+  if (/auth session missing|token has expired|otp_expired|invalid.*(link|token)/i.test(message))
+    return 'This reset link has expired or was already used. Go back and ask for a new one.';
+  if (/rate limit/i.test(message)) return 'Too many emails sent for now. Wait a few minutes and try again.';
+  if (/should be different from the old password/i.test(message)) return 'Choose a password you haven’t used before.';
   if (/failed to fetch|network request failed/i.test(message)) return 'You’re offline. Connect to the internet and try again.';
   return message;
 }

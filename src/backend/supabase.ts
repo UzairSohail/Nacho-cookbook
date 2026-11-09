@@ -9,6 +9,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 
+/** Where password reset emails send people to choose a new password. */
+export const WEB_APP_URL = 'https://nachocookbook.netlify.app';
+
+/**
+ * True when the web app was opened from a password reset email. Read before the
+ * client is created, since the client takes the sign-in details out of the
+ * address (and announces the reset before the app is listening).
+ */
+export const openedFromResetLink =
+  Platform.OS === 'web' && typeof window !== 'undefined' && /(^|[#&?])type=recovery(&|$)/.test(window.location.hash);
+
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 

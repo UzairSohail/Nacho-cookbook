@@ -6,7 +6,7 @@ import { Button, Card, Text, TextInput, useTheme } from '@/components/Themed';
 import { useAuth } from '@/src/backend/auth';
 
 export default function SignInScreen() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, sendPasswordReset } = useAuth();
   const c = useTheme();
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');
@@ -28,6 +28,17 @@ export default function SignInScreen() {
         setMode('signIn');
       }
     }
+    setBusy(false);
+  };
+
+  const forgotPassword = async () => {
+    setBusy(true);
+    setMessage(null);
+    const error = await sendPasswordReset(email);
+    setMessage(
+      error ??
+        'If there’s an account for that email, a link to choose a new password is on its way. Open it on this phone, or any device, and it will take you to the web app.',
+    );
     setBusy(false);
   };
 
@@ -60,6 +71,15 @@ export default function SignInScreen() {
           {message ? <Text variant="muted" style={{ color: c.tint }}>{message}</Text> : null}
           <Button title={busy ? 'Please wait…' : mode === 'signIn' ? 'Sign in' : 'Create account'} onPress={submit} disabled={busy} />
           <RNView style={{ alignItems: 'center' }}>
+            {mode === 'signIn' ? (
+              <Button
+                kind="secondary"
+                title="Forgot password?"
+                onPress={forgotPassword}
+                disabled={busy}
+                style={{ borderWidth: 0 }}
+              />
+            ) : null}
             <Button
               kind="secondary"
               title={mode === 'signIn' ? 'New here? Create an account' : 'Have an account? Sign in'}
