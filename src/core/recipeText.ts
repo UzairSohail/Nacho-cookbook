@@ -20,15 +20,25 @@ export class NoRecipeTextError extends Error {
 type Section = 'intro' | 'ingredients' | 'method' | 'notes' | 'skip';
 
 const SECTION_HEADINGS: Array<[Section, RegExp]> = [
-  ['ingredients', /^(the\s+)?ingredients?( list)?$|^what you('ll)? need$|^you('ll)? need$|^shopping list$/i],
-  ['method', /^(the\s+)?(instructions?|method|directions?|steps|preparation|how to make( it| them)?)$/i],
+  ['ingredients', /^(the\s+)?(main\s+)?ingredients?( list)?$|^what (you('ll)?|you will|we('ll)?) need$|^(you('ll)?|you will) need$|^(shopping|grocery) list$/i],
+  ['method', /^(the\s+)?(instructions?|method|directions?|steps|preparation|how to( make| cook)?( it| them| this)?|cooking (instructions?|method|steps|directions)|to make)$/i],
   ['notes', /^((recipe|important|extra|additional|helpful|quick|my|cook'?s|chef'?s)\s+)?(notes?|tips?|notes? (and|&) tips)$/i],
   ['skip', /^(equipment|nutrition( information| facts)?|video|did you make this( recipe)?\??|comments?|reviews?|related recipes|you (may|might) also like)$/i],
 ];
 
 /** Lines from buttons, ratings and other page furniture. */
 const JUNK =
-  /^(print( recipe)?|pin( recipe)?|save( recipe)?|share|rate( this)?( recipe)?|jump to recipe|jump to video|cook mode|prevent (your )?screen from (going dark|sleeping|dimming|locking)|keep (your )?screen (awake|on)|scale|cups|us cups|(\d+x\s*)+|metric|us customary|imperial|[★☆✩✭⭐]+.*|\d+(\.\d+)? from \d+ (votes?|reviews?|ratings?)|\d+ (votes?|reviews?|ratings?|comments?)|no ratings yet|click (on )?(the )?stars?.*|step \d+|\d+|ingredients?\s*\d+x.*|- ?\+|advertisement)$/i;
+  /^(print( recipe)?|pin( recipe)?|save( recipe)?|share|rate( this)?( recipe)?|jump to recipe|jump to video|cook mode|prevent (your )?screen from (going dark|sleeping|dimming|locking)|keep (your )?screen (awake|on)|scale|cups|us cups|(\d+x\s*)+|metric|us customary|imperial|[★☆✩✭⭐]+.*|\d+(\.\d+)? from \d+ (votes?|reviews?|ratings?)|\d+ (votes?|reviews?|ratings?|comments?)|no ratings yet|click (on )?(the )?stars?.*|step \d+|\d+|ingredients?\s*\d+x.*|- ?\+|advertisement|announcements?:?|(the |full )?recipe( below| here| is below)?:?|here'?s (how|the (full )?recipe)[^.]{0,30}:?|[.,·•…_~*=–—-]+)$/i;
+
+/**
+ * A nutrition line from a caption: "Macros per serving (x3 servings): approx 607
+ * calories | 45g P | 39g C | 30g F" or "75gC | 30gF | 140gP". Never an ingredient.
+ */
+const MACROS = /^\(?\s*(macros?|nutrition( info)?|calories)\b|\b\d+\s*g\s*(p|c|f|protein|carbs?|fat)\b\s*\|/i;
+
+/** Emoji people put after ingredients and steps in captions ("Chives, to garnish 🌿"). */
+const EMOJI = /[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}\u{FE0F}\u{200D}\u{20E3}]/gu;
+const dropEmoji = (t: string) => t.replace(EMOJI, '').replace(/\s+/g, ' ').replace(/\s+([,.!?])/g, '$1').trim();
 
 const tidy = (t: string) =>
   t
@@ -36,6 +46,21 @@ const tidy = (t: string) =>
     .replace(/[▢☐□✓✔◯○●]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+
+/** "Ingredients 👇" and "Sauce ⬇️": a pointing-down emoji after a few words makes a heading. */
+const POINTS_DOWN = /[\u{1F447}\u{2B07}\u{2935}\u{1F53D}]/u;
+
+/**
+ * A line with the emoji taken out, as captions are full of them: keycap steps
+ * ("1️⃣ Boil the pasta") become "1. Boil the pasta", and a short line ending in
+ * a pointing-down emoji becomes a heading with a colon.
+ */
+function withoutEmoji(line: string): string {
+  const keycap = line.replace(/^(\d{1,2})\u{FE0F}?\u{20E3}\s*[.):-]?\s*/u, '$1. ');
+  const bare = dropEmoji(keycap);
+  if (bare !== keycap && POINTS_DOWN.test(line) && bare.length <= 40 && !/[.!?:]$/.test(bare) && !/^\d/.test(bare)) return `${bare}:`;
+  return bare;
+}
 
 const stripHeadingColon = (t: string) => t.replace(/\s*:+$/, '').trim();
 
@@ -128,7 +153,8 @@ function readDetailLine(line: string, d: Details): boolean {
   if (line.length > 160) return false;
   // "Serves 4" / "Makes 12 cookies" / "Serves 4-6 people"
   const serves = /^(serves|servings|yield|yields|makes)\s*:?\s*(\d+(?:\.\d+)?)\b[^.]{0,30}$/i.exec(line);
-  if (serves) return applyDetail(d, 'servings', serves[2]);
+  // Unless more details follow, as in "Serves 4 | Prep 10 mins | Cook 20 mins".
+  if (serves && [...line.matchAll(INLINE_DETAIL)].length <= 1) return applyDetail(d, 'servings', serves[2]);
   const matches = [...line.matchAll(INLINE_DETAIL)];
   if (!matches.length || matches[0].index !== 0) return false;
   let any = false;
@@ -211,11 +237,22 @@ function splitIngredientList(line: string): string[] {
   return parts;
 }
 
-const PROMO = /\b(subscribe|newsletter|instagram|facebook|pinterest|affiliate)\b/i;
+const PROMO =
+  /\b(subscribe|newsletter|instagram|facebook|pinterest|affiliate|cookbooks?|e-?books?|grab yours|link in (my )?bio|out now|use (my )?code|discount code|giveaway)\b|@[\w.]+/i;
 
 /** The recipe's name is a short line, not a sentence or a newsletter plug. */
 const looksLikeTitle = (line: string) =>
-  line.length <= 80 && !/[.?!]$/.test(line) && !PROMO.test(line);
+  line.length <= 80 && !/[.?!:]$/.test(line) && !PROMO.test(line) && !(/,/.test(line) && line.split(/\s+/).length > 6);
+
+/**
+ * "Creamy Tuscan Pasta 🍝🔥 ready in 20 minutes!": in a caption's first line an
+ * emoji often ends the name and starts a tagline. Gives the two parts.
+ */
+function titleBeforeEmoji(raw: string): [string, string] | undefined {
+  const m = /^([^\p{Extended_Pictographic}]+?)\s*\p{Extended_Pictographic}[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}\s]*(\S.*)$/u.exec(raw);
+  if (!m || m[1].split(/\s+/).length < 2 || !looksLikeTitle(m[1].trim())) return undefined;
+  return [m[1].trim(), dropEmoji(m[2])];
+}
 
 const URL_LINE = /^(https?:\/\/\S+)$/i;
 const STARTS_WITH_AMOUNT = /^([-•*·]\s*)?(\d|[½⅓⅔¼¾⅛⅜⅝⅞]|a |an |one |two |three |pinch |handful |dash )/i;
@@ -249,14 +286,147 @@ function joinBrokenIngredients(lines: string[]): string[] {
   return out;
 }
 
+/** Words that start a step in a caption, on top of STEP_VERB. */
+const CAPTION_STEP_START = new RegExp(
+  String.raw`^(${STEP_VERB.source.slice(2, -3)}|air[- ]?fry|bake|fry|heat|preheat|turn|bring|boil|simmer|roast|grill|chop|slice|dice|cut|drain|remove|let|leave|top|garnish|spread|sprinkle|marinate|knead|shape|refrigerate|chill|melt|flip|repeat|enjoy|then|once|meanwhile|while|in a|on a|when|after|finally|now)\b`,
+  'i',
+);
+
+/**
+ * A line in a caption that starts a part of the recipe: "For the fries:",
+ * "Sticky chicken:", "## Sauce" or "For the sauce".
+ */
+function captionHeading(line: string): string | undefined {
+  let name: string | undefined;
+  if (/^#+\s+/.test(line)) name = line.replace(/^#+\s+/, '');
+  else if (/:$/.test(line) && line.length <= 50 && !/^\d/.test(line) && line.split(/\s+/).length <= 6) name = line;
+  else if (/^for (the )?\S/i.test(line) && line.length <= 40 && !/\d/.test(line) && !/[.!?,]/.test(line)) name = line;
+  if (name === undefined) return undefined;
+  name = stripHeadingColon(dropEmoji(name)).replace(/^for\s+(the\s+)?/i, '').trim();
+  return name ? name[0].toUpperCase() + name.slice(1) : undefined;
+}
+
+/** "Cooking instructions:", "Method", "Directions:": the steps follow. */
+const isMethodHeading = (line: string) => sectionOf(line) === 'method' || partHeading(line, 'intro')?.section === 'method';
+
+/** "Cook the noodles. Whisk the sauce, then toss." written as one paragraph: one step per sentence. */
+const splitSentences = (text: string) =>
+  text.split(/(?<=[a-z)][.!])\s+(?=[A-Z])/).map((t) => t.trim()).filter(Boolean);
+
+/** "Method: Boil the pasta…": a steps heading with the first step on the same line. Gives the step. */
+function inlineMethod(line: string): string | undefined {
+  const m = /^([^:]{3,30}?)\s*:\s*(.{3,})$/.exec(line);
+  return m && sectionOf(m[1]) === 'method' ? m[2] : undefined;
+}
+
+/** Starts with an amount or a bullet, as ingredients do. */
+const startsLikeIngredient = (line: string) => STARTS_WITH_AMOUNT.test(line) || /^[-•*·]\s/.test(line);
+
+/**
+ * A caption line that says what to do rather than naming an ingredient:
+ * "Cook on high heat for 6-7 mins!", "Serve over the fries", "1. Mix well".
+ * An ingredient is short and starts with an amount, or is a name with a note
+ * ("Chives, to garnish").
+ */
+function looksLikeStep(bulleted: string, afterStep: boolean): boolean {
+  const line = bulleted.replace(/^[-•*·]\s*/, '');
+  if (NUMBERED_STEP.test(line) && !STARTS_WITH_AMOUNT.test(line.replace(NUMBERED_STEP_NUMBER, ''))) return true;
+  if (startsLikeIngredient(line)) return false;
+  if (CAPTION_STEP_START.test(line)) return true;
+  const words = line.split(/\s+/).length;
+  if (words >= 8 || line.length > 80) return true;
+  // "Enjoy!" after a step, or a short sentence such as "Bake until golden."
+  return /[.!?]$/.test(dropEmoji(line)) && (words >= 4 || afterStep);
+}
+
+/**
+ * A line in the ingredients that is clearly the first step: "1. Boil the pasta",
+ * "Preheat the oven to 200°C." or a long sentence. Ingredient lines on recipe
+ * cards are short and rarely end in a full stop, so this stays strict.
+ */
+function startsSteps(bulleted: string): boolean {
+  const line = bulleted.replace(/^[-•*·]\s*/, '');
+  if (NUMBERED_STEP.test(line)) return !STARTS_WITH_AMOUNT.test(line.replace(NUMBERED_STEP_NUMBER, ''));
+  if (startsLikeIngredient(line) || /:$/.test(line)) return false;
+  const words = line.split(/\s+/).length;
+  if (CAPTION_STEP_START.test(line) && words >= 4) return true;
+  return /[.!]$/.test(line) && words >= 6;
+}
+
+/** "200g pasta, 2 eggs, salt and pepper" written on one line: split when most pieces have an amount. */
+function splitInlineList(text: string): string[] {
+  const pieces = text.split(/\s*[,;]\s*(?![^()]*\))/).map((p) => p.trim()).filter(Boolean);
+  const withAmount = pieces.filter((p) => STARTS_WITH_AMOUNT.test(p)).length;
+  return pieces.length >= 3 && withAmount * 2 > pieces.length ? pieces : [text];
+}
+
+/**
+ * "4 tbsp your favorite bbq sauce I used @sweetbabyrays - sugar free is better":
+ * the cook's aside goes after a comma, so the editor keeps it as the note and
+ * the name is just "favorite bbq sauce".
+ */
+function asideToNote(item: string): string {
+  let t = item.replace(/\b(?:your|any) (favou?rite|preferred) /i, '$1 ');
+  const aside = /\s+[(\[]?\s*(?=(?:i|we)\s+(?:used|use|like|love|prefer|recommend|ran|buy|bought|get|got)\b)/i.exec(t);
+  if (aside && aside.index > 0 && !t.slice(0, aside.index).replace(/\([^)]*\)/g, '').includes(',')) {
+    t = `${t.slice(0, aside.index)}, ${t.slice(aside.index + aside[0].length)}`.replace(/\s*[)\]]\s*$/, '');
+  }
+  return t.trim();
+}
+
+/**
+ * Sorts the body of a recipe with no "Ingredients" heading, as most Instagram
+ * captions are: parts named "For the fries:" with their ingredients under them,
+ * and the steps as plain sentences, sometimes under "Cooking instructions:",
+ * sometimes mixed in between the parts.
+ */
+function sortUnlabelledLines(rest: string[], intro: string[], ingredientLines: string[]): string[] {
+  const steps: string[] = [];
+  let i = 0;
+  // Leading lines are the description, until the first ingredient, part heading or steps heading.
+  const bodyStarts = (k: number) =>
+    startsLikeIngredient(rest[k]) ||
+    isMethodHeading(rest[k]) ||
+    (captionHeading(rest[k]) !== undefined && rest[k + 1] !== undefined && startsLikeIngredient(rest[k + 1]));
+  while (i < rest.length && !bodyStarts(i)) intro.push(rest[i++]);
+  let inMethod = false;
+  let afterStep = false;
+  for (; i < rest.length; i++) {
+    const l = rest[i];
+    if (isMethodHeading(l)) {
+      inMethod = true;
+      continue;
+    }
+    const inlineStep = inlineMethod(l);
+    if (inlineStep !== undefined) {
+      inMethod = true;
+      steps.push(...splitSentences(inlineStep));
+      afterStep = true;
+      continue;
+    }
+    const heading = captionHeading(l);
+    if (heading !== undefined) {
+      ingredientLines.push(`${heading}:`);
+      inMethod = false;
+      afterStep = false;
+      continue;
+    }
+    if (inMethod || looksLikeStep(l, afterStep)) {
+      steps.push(l);
+      afterStep = true;
+    } else ingredientLines.push(l);
+  }
+  return steps;
+}
+
 /**
  * Turns pasted recipe text into a recipe for the editor. Throws
  * NoRecipeTextError if no ingredients can be found.
  */
 export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
-  const lines = text
-    .split(/\r?\n/)
-    .map(tidy)
+  const rawLines = text.split(/\r?\n/);
+  const lines = rawLines
+    .map((l) => withoutEmoji(tidy(l)))
     // Bullets and markdown emphasis people paste from notes apps.
     .map((l) => l.replace(/^\*\*(.+)\*\*$/, '$1').replace(/^__(.+)__$/, '$1'));
 
@@ -274,7 +444,15 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
 
   let lastTime: { key: 'prep' | 'cook' | 'total'; value: number } | undefined;
 
-  for (const raw of lines) {
+  // With no "Ingredients" heading anywhere (as in most Instagram captions), the
+  // whole recipe is sorted line by line at the end, so a steps heading in the
+  // middle mustn't swallow the parts that come after it.
+  const unlabelled = !lines.some((l) => l && (sectionOf(l) === 'ingredients' || partHeading(l, 'intro')?.section === 'ingredients'));
+  /** In an unlabelled recipe, the ingredients or steps have started: no more title or details. */
+  let bodyStarted = false;
+
+  for (let index = 0; index < lines.length; index++) {
+    const raw = lines[index];
     if (!raw) {
       pendingLabel = undefined;
       continue;
@@ -285,7 +463,23 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
       if (!url) url = urlMatch[1];
       continue;
     }
+    if (MACROS.test(line)) {
+      // "(x3 servings)" in the macros is how many the recipe makes.
+      const serves = /\bx\s*(\d+)\s*servings?\b|\b(?:makes|serves)\s*(\d+)\b|\b(\d+)\s*servings\b/i.exec(line);
+      if (serves && details.servings == null) details.servings = Number(serves[1] ?? serves[2] ?? serves[3]);
+      continue;
+    }
+    // "Ingredients (serves 2)" or "Ingredients for 4 people": a heading, and how many it serves.
+    const serves = /\s*[(\[\-–—|,]?\s*(?:serves|servings?|makes|for)\s*:?\s*(\d+)(?:\s*(?:people|persons|servings|portions))?\s*[)\]]?\s*:?$/i.exec(line);
+    if (serves && serves.index > 0 && sectionOf(line.slice(0, serves.index))) {
+      if (details.servings == null) details.servings = Number(serves[1]);
+      line = line.slice(0, serves.index);
+    }
     const part: ReturnType<typeof partHeading> = section === 'skip' ? undefined : partHeading(line, section);
+    if (section === 'intro' && unlabelled && bodyStarted && (part?.section === 'method' || isMethodHeading(line) || inlineMethod(line) !== undefined)) {
+      intro.push(line);
+      continue;
+    }
     if (part) {
       section = part.section;
       if (part.section === 'ingredients') {
@@ -293,6 +487,19 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
         ingredientLines.push(`${part.part}:`);
       } else methodLines.push(`${part.part}:`);
       pendingLabel = undefined;
+      continue;
+    }
+    // "Ingredients: 200g pasta, 2 eggs, 50g parmesan" or "Method: Boil the pasta…" on one line.
+    const inline = /^([^:]{3,30}?)\s*[:\-–—]\s*(.{3,})$/.exec(line);
+    const inlineSection = inline ? sectionOf(inline[1]) : undefined;
+    if (inline && (inlineSection === 'ingredients' || inlineSection === 'method' || inlineSection === 'notes')) {
+      section = inlineSection;
+      pendingLabel = undefined;
+      if (inlineSection === 'ingredients') {
+        sawIngredientsHeading = true;
+        ingredientLines.push(...splitInlineList(inline[2]));
+      } else if (inlineSection === 'method') methodLines.push(...splitSentences(inline[2]));
+      else notes.push(inline[2]);
       continue;
     }
     const heading = sectionOf(line);
@@ -319,6 +526,18 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
     const brokenAmount = section === 'ingredients' && /^[\d\s/.½⅓⅔¼¾⅛⅜⅝⅞-]+$/.test(line);
     if (JUNK.test(line) && !brokenAmount) continue;
 
+    if (section === 'intro' && unlabelled) {
+      const startsBody =
+        captionHeading(line) !== undefined ||
+        /^[-•*·]\s/.test(line) ||
+        // An amount on the first line is the name: "5 Minute Pasta".
+        (/^(\d|[½⅓⅔¼¾⅛⅜⅝⅞])/.test(line) && (title !== '' || intro.length > 0));
+      if (bodyStarted || startsBody) {
+        bodyStarted = true;
+        intro.push(line);
+        continue;
+      }
+    }
     if (section === 'intro') {
       const alone = detailKey(line);
       if (alone) {
@@ -344,45 +563,48 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
         }
         continue;
       }
+      const split = !title && !intro.length && !looksLikeTitle(line) ? titleBeforeEmoji(tidy(rawLines[index])) : undefined;
+      if (split) {
+        title = split[0];
+        intro.push(split[1][0].toUpperCase() + split[1].slice(1));
+        continue;
+      }
       if (!title && looksLikeTitle(line)) {
         title = line
           .replace(/[\s\p{Extended_Pictographic}\u{FE0F}\u{200D}]+$/u, '')
           .replace(/\s+recipe$/i, '')
           .trim();
+        // "Garlic butter prawns (serves 2)"
+        const serves = /\s*[(\[|\-–—]\s*(?:serves|makes|for)\s*(\d+)[^)\]]{0,20}[)\]]?$/i.exec(title);
+        if (serves && serves.index > 0) {
+          if (details.servings == null) details.servings = Number(serves[1]);
+          title = title.slice(0, serves.index).trim();
+        }
         continue;
       }
       intro.push(line);
       continue;
     }
-    // Numbered steps straight after the ingredients, with no Method heading.
-    if (section === 'ingredients' && NUMBERED_STEP.test(line) && !STARTS_WITH_AMOUNT.test(line.replace(NUMBERED_STEP_NUMBER, ''))) {
-      section = 'method';
-    }
+    // Steps straight after the ingredients, with no Method heading: numbered, or plain sentences in a caption.
+    if (section === 'ingredients' && startsSteps(line)) section = 'method';
     if (section === 'ingredients') ingredientLines.push(line);
     else if (section === 'method') methodLines.push(line);
     else if (section === 'notes') notes.push(line);
   }
 
   // No "Ingredients" heading: take short lines that start with an amount as ingredients, and the rest as steps.
-  if (!sawIngredientsHeading) {
-    const rest = intro.splice(0);
-    const steps: string[] = [];
-    let i = 0;
-    while (i < rest.length && !STARTS_WITH_AMOUNT.test(rest[i]) && !/^[-•*·]\s/.test(rest[i])) intro.push(rest[i++]);
-    for (; i < rest.length; i++) {
-      const l = rest[i];
-      const numberedStep = /^(step\s*)?\d+[.)]\s+\S/i.test(l) && l.length > 50;
-      if (!steps.length && !numberedStep && (l.length <= 80 || STARTS_WITH_AMOUNT.test(l))) ingredientLines.push(l);
-      else steps.push(l);
-    }
-    methodLines.unshift(...steps);
-  }
+  if (!sawIngredientsHeading) methodLines.unshift(...sortUnlabelledLines(intro.splice(0), intro, ingredientLines));
 
   const ingredients: ImportedIngredientGroup[] = [{ items: [] }];
   for (const l of joinBrokenIngredients(ingredientLines)) {
     const h = subHeading(l, 'ingredients');
     if (h !== undefined) ingredients.push({ heading: h || undefined, items: [] });
-    else ingredients[ingredients.length - 1].items.push(...splitIngredientList(l.replace(/^[-•*·]\s*/, '')));
+    else {
+      const items = splitIngredientList(dropEmoji(l.replace(/^[-•*·]\s*/, '')))
+        .map(asideToNote)
+        .filter(Boolean);
+      ingredients[ingredients.length - 1].items.push(...items);
+    }
   }
 
   const instructions: ImportedStepGroup[] = [{ steps: [] }];
@@ -390,7 +612,7 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
     const h = subHeading(l, 'method');
     if (h !== undefined) instructions.push({ heading: h || undefined, steps: [] });
     else {
-      const step = stripStepNumber(l.replace(/^[-•*·]\s*/, ''));
+      const step = dropEmoji(stripStepNumber(l.replace(/^[-•*·]\s*/, '')));
       if (step) instructions[instructions.length - 1].steps.push(step);
     }
   }

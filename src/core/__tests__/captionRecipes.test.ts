@@ -2,7 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import { cleanCaption } from '../instagram';
 import { parseRecipeText } from '../recipeText';
+import { draftFromImport, draftToRecipe } from '../../state/recipeDraft';
+import amountsAfterNames from './captions/amounts-after-names.txt?raw';
+import pancakes from './captions/bullets-everywhere.txt?raw';
 import chickenTenders from './captions/chicken-tenders.txt?raw';
+import emojiPasta from './captions/emoji-headings-pasta.txt?raw';
+import peanutNoodles from './captions/inline-lists.txt?raw';
+import stickyChicken from './captions/sticky-chicken-fries.txt?raw';
+import brownies from './captions/story-then-recipe.txt?raw';
+import salmon from './captions/unlabelled-parts.txt?raw';
+import burritoBowl from './captions/what-you-need-bowl.txt?raw';
 
 /**
  * Real recipe captions, typed from screenshots of the app's paste box. They
@@ -84,5 +93,143 @@ describe('recipe part headings', () => {
   it('only splits a line into several ingredients when each piece has an amount', () => {
     const items = parseRecipeText('Ingredients\n2 chicken breasts, sliced\nSalt & pepper\n1 tsp cumin, 2 tsp paprika and 1/2 tsp chilli\n350g mayo (Heinz, light)').ingredients[0].items;
     expect(items).toEqual(['2 chicken breasts, sliced', 'Salt & pepper', '1 tsp cumin', '2 tsp paprika', '1/2 tsp chilli', '350g mayo (Heinz, light)']);
+  });
+});
+
+/**
+ * More caption shapes: parts named "For the fries:" with no Ingredients
+ * heading, steps as plain sentences between the parts, emoji headings and
+ * keycap steps, bullets on everything, lists written on one line, and the
+ * promos, macros and dots that fill out a caption.
+ */
+describe('captions without the usual headings', () => {
+  const parse = (text: string) => parseRecipeText(cleanCaption(text));
+  const steps = (r: ReturnType<typeof parseRecipeText>) => r.instructions.flatMap((g) => g.steps);
+
+  it('sorts parts named "For the …:" into sections, with the steps between them as the method', () => {
+    const r = parse(stickyChicken);
+    expect(r.ingredients).toEqual([
+      { heading: 'Fries', items: ['2-3 medium russet potatoes, cut into thin fries', 'Avocado oil spray'] },
+      {
+        heading: 'Sticky chicken',
+        items: ['1.5 lbs ground chicken', 'Salt & Pepper, to taste', '1 tsp garlic powder', 'Avocado oil, spray'],
+      },
+      {
+        heading: 'Sauce',
+        items: [
+          '4 tbsp favorite bbq sauce, I used @sweetbabyrays honey bbq - sugar free is even better but I ran out!!',
+          'Chives, to garnish',
+        ],
+      },
+    ]);
+    expect(steps(r)).toEqual([
+      'Air fry at 400°F FOR 12-15 mins shake every 5 mins.',
+      'Cook on high heat for 6-7 mins! Turn heat to low and add enough sauce to coat the chicken.',
+      'Serve over the air fried French fries',
+    ]);
+    // The promo, "Announcements:" and the macros are left out; "(x3 servings)" is kept.
+    expect(r.title).toBe('Pasted recipe');
+    expect(r.description).toBeUndefined();
+    expect(r.servings).toBe(3);
+  });
+
+  it('opens in the editor with amounts read properly', () => {
+    const saved = draftToRecipe(draftFromImport(parse(stickyChicken), 2));
+    const byName = Object.fromEntries(saved.ingredients.map((i) => [i.name, i]));
+    expect(byName['Medium russet potatoes']).toMatchObject({ quantity: 2, unit: null, note: '2–3, cut into thin fries' });
+    expect(byName['Avocado oil spray']).toMatchObject({ quantity: null, unit: null });
+    expect(byName['Ground chicken']).toMatchObject({ quantity: 1.5, unit: 'lbs' });
+    expect(byName['Favorite bbq sauce']).toMatchObject({ quantity: 4, unit: 'tbsp' });
+    expect(byName['Chives']).toMatchObject({ quantity: null, note: 'to garnish' });
+    expect(saved.steps).toHaveLength(3);
+  });
+
+  it('reads emoji headings, keycap steps and a details line', () => {
+    const r = parse(emojiPasta);
+    expect(r).toMatchObject({ title: 'Creamy Tuscan Chicken Pasta', servings: 4, prepMinutes: 10, cookMinutes: 20 });
+    expect(r.description).toMatch(/^Ready in 20 minutes!/);
+    expect(r.ingredients).toHaveLength(1);
+    expect(r.ingredients[0].items).toHaveLength(8);
+    expect(r.ingredients[0].items[0]).toBe('400g penne');
+    expect(steps(r)).toHaveLength(5);
+    expect(steps(r)[0]).toBe('Cook the pasta in salted water until al dente.');
+  });
+
+  it('finds plain-sentence steps after the ingredients, and servings in the heading', () => {
+    const r = parse(brownies);
+    expect(r.servings).toBe(16);
+    expect(r.ingredients).toEqual([{ items: expect.arrayContaining(['200g dark chocolate', 'Pinch of salt']) }]);
+    expect(r.ingredients[0].items).toHaveLength(7);
+    expect(steps(r)).toHaveLength(4);
+    expect(steps(r)[0]).toMatch(/^Melt the chocolate/);
+    expect(r.notes).toBe('They firm up overnight in the fridge.');
+    expect(r.description).toMatch(/^Honestly these are the best brownies/);
+  });
+
+  it('reads "What you\'ll need" and "How to make it" with bullets, and drops the macros', () => {
+    const r = parse(burritoBowl);
+    expect(r.title).toBe('HIGH PROTEIN BURRITO BOWL');
+    expect(r.ingredients[0].items).toHaveLength(7);
+    expect(r.ingredients[0].items).toContain('Light sour cream, to serve');
+    expect(steps(r)).toHaveLength(4);
+    expect(steps(r)[3]).toMatch(/^Build your bowls/);
+  });
+
+  it('reads unlabelled parts ("Glaze:") followed by plain steps', () => {
+    const r = parse(salmon);
+    expect(r.title).toBe('Honey garlic salmon bites');
+    expect(r.ingredients.map((g) => [g.heading, g.items.length])).toEqual([
+      ['Salmon', 3],
+      ['Glaze', 4],
+    ]);
+    expect(steps(r)).toHaveLength(4);
+    expect(steps(r)[3]).toBe('Serve with rice and greens!');
+  });
+
+  it('splits ingredients and steps written on one line after the heading', () => {
+    const r = parse(peanutNoodles);
+    expect(r.title).toBe('5 Minute Peanut Noodles');
+    expect(r.ingredients[0].items).toEqual([
+      '2 nests egg noodles',
+      '2 tbsp peanut butter',
+      '1 tbsp soy sauce',
+      '1 tsp sriracha',
+      '1 tsp honey',
+      'spring onion to serve',
+    ]);
+    expect(steps(r)).toEqual([
+      'Cook the noodles.',
+      'Whisk the peanut butter, soy, sriracha and honey with 3 tbsp of the hot noodle water, then toss through the noodles.',
+      'Top with spring onion.',
+    ]);
+  });
+
+  it('tells bulleted steps from bulleted ingredients', () => {
+    const r = parse(pancakes);
+    expect(r.title).toBe('Fluffy protein pancakes');
+    expect(r.ingredients).toEqual([
+      { items: ['1 cup self raising flour', '1 scoop vanilla protein powder', '1 egg', '3/4 cup milk'] },
+    ]);
+    expect(steps(r)).toEqual([
+      'Whisk everything together until smooth',
+      'Cook 1/4 cup at a time in a non-stick pan over medium heat',
+      'Flip when bubbles appear',
+      'Top with berries & maple syrup',
+    ]);
+  });
+
+  it('reads amounts after names, "Step 1 -" steps, servings in the name and a tip', () => {
+    const r = parse(amountsAfterNames);
+    expect(r).toMatchObject({ title: 'Garlic butter prawns', servings: 2 });
+    expect(r.ingredients[0].items).toHaveLength(5);
+    expect(steps(r)).toEqual([
+      'Melt the butter in a pan over medium heat.',
+      'Add garlic and cook for 30 seconds.',
+      'Add prawns and cook 2 mins each side.',
+      'Finish with parsley and lemon juice.',
+    ]);
+    expect(r.notes).toBe("Don't overcook the prawns or they go rubbery!");
+    const saved = draftToRecipe(draftFromImport(r, 2));
+    expect(saved.ingredients[0]).toMatchObject({ name: 'Prawns', quantity: 500, unit: 'g' });
   });
 });
