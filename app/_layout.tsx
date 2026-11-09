@@ -57,17 +57,22 @@ function RootLayoutNav() {
   // Demo mode (no backend configured) skips sign-in and runs on sample data.
   const signedIn = auth.demoMode || auth.account != null;
   const inHousehold = auth.demoMode || auth.household != null;
+  // Opened from a password reset email: choose the new password before anything else.
+  const resetting = !auth.demoMode && auth.resettingPassword;
 
   return (
     <ThemeProvider value={theme}>
       <Stack screenOptions={{ headerTitleStyle: { fontFamily: Fonts.title }, headerTintColor: c.tint }}>
-        <Stack.Protected guard={!signedIn}>
+        <Stack.Protected guard={resetting}>
+          <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+        </Stack.Protected>
+        <Stack.Protected guard={!resetting && !signedIn}>
           <Stack.Screen name="sign-in" options={{ headerShown: false }} />
         </Stack.Protected>
-        <Stack.Protected guard={signedIn && !inHousehold}>
+        <Stack.Protected guard={!resetting && signedIn && !inHousehold}>
           <Stack.Screen name="household" options={{ title: 'Your household' }} />
         </Stack.Protected>
-        <Stack.Protected guard={signedIn && inHousehold}>
+        <Stack.Protected guard={!resetting && signedIn && inHousehold}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="recipe/[id]" options={{ title: 'Recipe' }} />
           <Stack.Screen name="edit-recipe" options={{ title: 'New recipe' }} />
