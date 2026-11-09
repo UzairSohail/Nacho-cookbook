@@ -86,14 +86,44 @@ export function amountText(q: number | null): string {
 
 const numText = (n: number | null | undefined) => (n == null ? '' : String(n));
 
-export function draftFromRecipe(recipe: Recipe, catalog: Map<string, Ingredient>): RecipeDraft {
+/**
+ * Recipes imported before amounts after the name were understood ("Garlic, 50g")
+ * were saved with no amount and "50g" as the note, so they couldn't be scaled
+ * by what you have. Reads such a note back into the amount and unit.
+ */
+export function repairIngredientLine(l: IngredientLine): IngredientLine {
+  if (l.amount.trim() || !l.note.trim() || !l.name.trim()) return l;
+  const p = parseIngredientLine(`${l.name}, ${l.note}`);
+  if (!p || p.quantity == null || p.name.toLowerCase() !== l.name.trim().toLowerCase()) return l;
+  return {
+    ...l,
+    amount: amountText(p.quantity),
+    unit: p.unit ?? '',
+    note: p.note ?? '',
+    optional: l.optional || p.optional,
+  };
+}
+
+/** True if some ingredient has its amount stuck in the note (see repairIngredientLine). */
+export function recipeNeedsRepair(recipe: Recipe, catalog: Map<string, Ingredient>): boolean {
+  return draftFromRecipe(recipe, catalog, false).lines.some(
+    (l) => l.kind === 'ingredient' && repairIngredientLine(l) !== l,
+  );
+}
+
+/** The recipe with amounts read back out of notes, ready to save. */
+export function repairRecipe(recipe: Recipe, catalog: Map<string, Ingredient>): RecipeInput {
+  return draftToRecipe(draftFromRecipe(recipe, catalog), recipe);
+}
+
+export function draftFromRecipe(recipe: Recipe, catalog: Map<string, Ingredient>, repair = true): RecipeDraft {
   const lines: DraftLine[] = [];
   let group: string | undefined;
   for (const ri of recipe.ingredients) {
     // A blank heading ends a section, for ungrouped items that follow a group.
     if ((ri.group ?? undefined) !== group) lines.push({ kind: 'heading', key: key(), text: ri.group ?? '' });
     group = ri.group;
-    lines.push({
+    const line: IngredientLine = {
       kind: 'ingredient',
       key: key(),
       amount: amountText(ri.quantity),
@@ -101,7 +131,8 @@ export function draftFromRecipe(recipe: Recipe, catalog: Map<string, Ingredient>
       name: catalog.get(ri.ingredientId)?.name ?? '',
       note: ri.note ?? '',
       optional: !!ri.optional,
-    });
+    };
+    lines.push(repair ? repairIngredientLine(line) : line);
   }
   return {
     id: recipe.id,
@@ -261,14 +292,12 @@ export function draftFromImport(r: ImportedRecipe, householdSize = 4): RecipeDra
     if (group.heading || lines.length) lines.push({ kind: 'heading', key: key(), text: group.heading ?? '' });
     lines.push(...linesFromText(group.items.join('\n'), false));
   }
-  const multi = r.instructions.length > 1;
-  const steps: StepLine[] = r.instructions.flatMap((g) =>
-    g.steps.map((text, i) => ({
-      key: key(),
-      // Steps have no sections, so the section name leads its first step: "Cheesecake: Beat the cream cheese…".
-      text: multi && g.heading && i === 0 ? `${g.heading}: ${text}` : text,
-    })),
-  );
+  // Steps have no sections, so a section name is a step of its own ending in ":",
+  // which the recipe page shows as a sub-heading: "Garlic Confit:" then its steps.
+  const steps: StepLine[] = r.instructions.flatMap((g) => [
+    ...(g.heading ? [{ key: key(), text: `${g.heading.replace(/:+$/, '')}:` }] : []),
+    ...g.steps.map((text) => ({ key: key(), text })),
+  ]);
   return {
     ...emptyDraft(householdSize),
     title: r.title,

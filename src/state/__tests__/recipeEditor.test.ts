@@ -9,6 +9,8 @@ import {
   emptyDraft,
   hasErrors,
   linesFromText,
+  recipeNeedsRepair,
+  repairRecipe,
   stepsFromText,
   validateDraft,
   type RecipeDraft,
@@ -145,5 +147,35 @@ describe('saving and deleting recipes', () => {
     expect(tables.lastIndexOf('recipe_ingredients')).toBeLessThan(tables.indexOf('recipes'));
     expect(tables.lastIndexOf('recipe_steps')).toBeLessThan(tables.indexOf('recipes'));
     expect(tables.indexOf('plan_entries')).toBeLessThan(tables.indexOf('recipes'));
+  });
+});
+
+describe('repairing amounts saved as notes', () => {
+  it('reads "Garlic, 50g" style notes back into amounts, and leaves real notes alone', () => {
+    const recipe = {
+      id: 'r1', title: 'Cheesy garlic bread', servings: 2, steps: [],
+      ingredients: [
+        { ingredientId: 'garlic', quantity: null, unit: null, note: '50g', scalable: false },
+        { ingredientId: 'chilli', quantity: null, unit: null, note: '1/2 tsp', scalable: false, optional: true },
+        { ingredientId: 'salt', quantity: null, unit: null, note: 'to taste', scalable: false },
+        { ingredientId: 'mozz', quantity: null, unit: null, scalable: false },
+      ],
+    };
+    const catalog = new Map([
+      ['garlic', { id: 'garlic', name: 'Garlic', aisle: 'produce' as const }],
+      ['chilli', { id: 'chilli', name: 'Chili Flakes', aisle: 'spices' as const }],
+      ['salt', { id: 'salt', name: 'Salt', aisle: 'spices' as const }],
+      ['mozz', { id: 'mozz', name: 'Mozarella cheese', aisle: 'dairy' as const }],
+    ]);
+    expect(recipeNeedsRepair(recipe, catalog)).toBe(true);
+    const fixed = repairRecipe(recipe, catalog);
+    expect(fixed.ingredients).toEqual([
+      expect.objectContaining({ name: 'Garlic', quantity: 50, unit: 'g', note: undefined, scalable: true }),
+      expect.objectContaining({ name: 'Chili Flakes', quantity: 0.5, unit: 'tsp', scalable: true, optional: true }),
+      expect.objectContaining({ name: 'Salt', quantity: null, note: 'to taste', scalable: false }),
+      expect.objectContaining({ name: 'Mozarella cheese', quantity: null, scalable: false }),
+    ]);
+    const state = reducer(empty(), { type: 'saveRecipe', recipe: fixed });
+    expect(recipeNeedsRepair(state.recipes[0], new Map(state.ingredients.map((i) => [i.id, i])))).toBe(false);
   });
 });

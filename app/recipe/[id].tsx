@@ -9,17 +9,19 @@ import {
   formatAmount,
   formatFraction,
   limitingFactor,
+  looksLikeStepHeading,
   parseQuantity,
   scaleIngredients,
   type ScaledIngredient,
 } from '@/src/core';
+import { recipeNeedsRepair, repairRecipe } from '@/src/state/recipeDraft';
 import { useCatalog, useRecipeMap, useStore } from '@/src/state/store';
 
 export default function RecipeScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const recipe = useRecipeMap().get(id);
   const catalog = useCatalog();
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const c = useTheme();
   const { system, standard } = state.settings;
 
@@ -28,6 +30,7 @@ export default function RecipeScreen() {
   const [haveText, setHaveText] = useState('');
   const [haveUnit, setHaveUnit] = useState('');
   const [limitNote, setLimitNote] = useState<string | null>(null);
+  const [noAmount, setNoAmount] = useState<number | null>(null);
 
   if (!recipe) {
     return (
@@ -47,7 +50,13 @@ export default function RecipeScreen() {
 
   const startLimit = (index: number) => {
     const item = recipe.ingredients[index];
-    if (!item.scalable || item.quantity == null) return;
+    if (!item.scalable || item.quantity == null) {
+      // Say why nothing opened, rather than ignoring the tap.
+      setEditing(null);
+      setNoAmount(noAmount === index ? null : index);
+      return;
+    }
+    setNoAmount(null);
     setEditing(index);
     setHaveText('');
     setHaveUnit(item.unit ?? '');
@@ -78,6 +87,12 @@ export default function RecipeScreen() {
     });
     return `${a.quantity}${a.unit ? ` ${a.unit}` : ''}`;
   };
+
+  const needsRepair = recipeNeedsRepair(recipe, catalog);
+  const repair = () => dispatch({ type: 'saveRecipe', recipe: repairRecipe(recipe, catalog) });
+  // Without any amounts, a blank amount column would push every name to the middle.
+  const showAmounts = scaled.some((item) => amountText(item));
+  let stepNumber = 0;
 
   let lastGroup: string | undefined;
   const editRecipe = () => router.push({ pathname: '/edit-recipe', params: { id: recipe.id } });
@@ -139,6 +154,12 @@ export default function RecipeScreen() {
       <RNView style={styles.gap}>
         <Text variant="heading">Ingredients</Text>
         <Text variant="muted">Tap an ingredient to scale the recipe to what you have.</Text>
+        {needsRepair ? (
+          <Card style={styles.haveRow}>
+            <Text>Some amounts were saved as notes, so those ingredients can’t be scaled.</Text>
+            <Button title="Fix amounts" onPress={repair} />
+          </Card>
+        ) : null}
         {scaled.map((item, index) => {
           const name = catalog.get(item.ingredientId)?.name ?? item.ingredientId;
           const header = item.group && item.group !== lastGroup ? item.group : null;
@@ -150,7 +171,7 @@ export default function RecipeScreen() {
                 onPress={() => startLimit(index)}
                 accessibilityHint="Enter how much you have"
                 style={[styles.ingredient, { borderBottomColor: c.border }]}>
-                <Text style={styles.amount}>{amountText(item)}</Text>
+                {showAmounts ? <Text style={styles.amount}>{amountText(item)}</Text> : null}
                 <RNView style={{ flex: 1 }}>
                   <Text>
                     {name}
@@ -164,6 +185,11 @@ export default function RecipeScreen() {
                   ) : null}
                 </RNView>
               </Pressable>
+              {noAmount === index ? (
+                <Text variant="muted" style={{ marginVertical: 8 }}>
+                  {name} has no amount, so it can’t set the scale. Add one with Edit to use it.
+                </Text>
+              ) : null}
               {editing === index ? (
                 <Card style={styles.haveRow}>
                   <Text variant="label">HOW MUCH {name.toUpperCase()} DO YOU HAVE?</Text>
@@ -198,19 +224,30 @@ export default function RecipeScreen() {
 
       <RNView style={styles.gap}>
         <Text variant="heading">Method</Text>
-        {recipe.steps.map((step, i) => (
-          <RNView key={i} style={styles.step}>
-            <RNView style={[styles.stepNum, { backgroundColor: c.tint }]}>
-              <Text style={{ color: c.onTint }}>{i + 1}</Text>
+        {recipe.steps.map((step, i) => {
+          // "Garlic Confit" names the steps below it; it isn't a step to number.
+          if (!step.photoUrl && i < recipe.steps.length - 1 && looksLikeStepHeading(step.text)) {
+            return (
+              <Text key={i} variant="label" style={{ marginTop: 8 }}>
+                {step.text.replace(/:+$/, '').toUpperCase()}
+              </Text>
+            );
+          }
+          const n = ++stepNumber;
+          return (
+            <RNView key={i} style={styles.step}>
+              <RNView style={[styles.stepNum, { backgroundColor: c.tint }]}>
+                <Text style={{ color: c.onTint }}>{n}</Text>
+              </RNView>
+              <RNView style={{ flex: 1, gap: 10 }}>
+                {step.text ? <Text>{step.text}</Text> : null}
+                {step.photoUrl ? (
+                  <RecipePhoto path={step.photoUrl} style={styles.stepPhoto} label={`Photo for step ${n}`} />
+                ) : null}
+              </RNView>
             </RNView>
-            <RNView style={{ flex: 1, gap: 10 }}>
-              {step.text ? <Text>{step.text}</Text> : null}
-              {step.photoUrl ? (
-                <RecipePhoto path={step.photoUrl} style={styles.stepPhoto} label={`Photo for step ${i + 1}`} />
-              ) : null}
-            </RNView>
-          </RNView>
-        ))}
+          );
+        })}
       </RNView>
 
       {recipe.notes ? (

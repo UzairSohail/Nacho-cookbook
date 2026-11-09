@@ -161,6 +161,28 @@ Add the stock and simmer.`);
     expect(r.instructions.map((g) => g.heading)).toEqual(['BROWN', 'SIMMER']);
   });
 
+  it('reads a caption with amounts after the names and a method sub-heading', () => {
+    const r = parseRecipeText(
+      'Cheesy Garlic Bread\n\nIngredients\nGarlic, 50g\nOlive oil, 1/2 Cup\nChili Flakes, 1/2 tsp (optional)\nMozarella cheese\n\n' +
+        'Method\nGarlic Confit\nSimmer garlic cloves in olive oil on low heat for 25-30 mins until soft.\nGarlic Bread\nMash the garlic with the butter.\nEnjoy',
+    );
+    expect(r.instructions).toEqual([
+      { heading: 'Garlic Confit', steps: ['Simmer garlic cloves in olive oil on low heat for 25-30 mins until soft.'] },
+      { heading: 'Garlic Bread', steps: ['Mash the garlic with the butter.', 'Enjoy'] },
+    ]);
+    const saved = draftToRecipe(draftFromImport(r, 2));
+    expect(saved.ingredients[0]).toMatchObject({ name: 'Garlic', quantity: 50, unit: 'g', scalable: true });
+    expect(saved.ingredients[2]).toMatchObject({ name: 'Chili Flakes', quantity: 0.5, unit: 'tsp', optional: true });
+    expect(saved.ingredients[3]).toMatchObject({ name: 'Mozarella cheese', quantity: null, scalable: false });
+    expect(saved.steps.map((s) => s.text)).toEqual([
+      'Garlic Confit:',
+      'Simmer garlic cloves in olive oil on low heat for 25-30 mins until soft.',
+      'Garlic Bread:',
+      'Mash the garlic with the butter.',
+      'Enjoy',
+    ]);
+  });
+
   it('says so when there are no ingredients', () => {
     expect(() => parseRecipeText('Just a story about my holiday.')).toThrow(NoRecipeTextError);
     expect(() => parseRecipeText('')).toThrow(NoRecipeTextError);
@@ -173,7 +195,8 @@ Add the stock and simmer.`);
     expect(hasErrors(validateDraft(d))).toBe(false);
     const saved = draftToRecipe(d);
     expect(saved.ingredients.find((i) => i.name === 'Cream cheese')).toMatchObject({ quantity: 500, group: 'Filling' });
-    expect(saved.steps[0].text).toBe('Crust: Mix the crumbs and butter and press into the tin.');
+    expect(saved.steps[0].text).toBe('Crust:');
+    expect(saved.steps[1].text).toBe('Mix the crumbs and butter and press into the tin.');
   });
 });
 

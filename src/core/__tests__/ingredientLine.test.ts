@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guessAisle, parseIngredientLine } from '../ingredientLine';
+import { guessAisle, looksLikeStepHeading, parseIngredientLine } from '../ingredientLine';
 
 describe('parseIngredientLine', () => {
   it.each([
@@ -16,6 +16,25 @@ describe('parseIngredientLine', () => {
     ['Salt, to taste', { quantity: null, unit: null, name: 'Salt', note: 'to taste' }],
     ['1 tbsp chilli flakes (optional)', { quantity: 1, unit: 'tbsp', name: 'Chilli flakes', optional: true }],
   ])('%s', (line, expected) => {
+    expect(parseIngredientLine(line)).toMatchObject({ optional: false, ...expected });
+  });
+
+  // Captions and handwritten lists often put the amount after the name.
+  it.each([
+    ['Garlic, 50g', { quantity: 50, unit: 'g', name: 'Garlic' }],
+    ['Olive oil, 1/2 Cup', { quantity: 0.5, unit: 'Cup', name: 'Olive oil' }],
+    ['Chili Flakes, 1/2 tsp (optional)', { quantity: 0.5, unit: 'tsp', name: 'Chili Flakes', optional: true }],
+    ['Olive oil - 2 tbsp', { quantity: 2, unit: 'tbsp', name: 'Olive oil' }],
+    ['Flour: 2 cups, sifted', { quantity: 2, unit: 'cups', name: 'Flour', note: 'sifted' }],
+    ['Milk 1 1/2 cups', { quantity: 1.5, unit: 'cups', name: 'Milk' }],
+    ['Eggs 2', { quantity: 2, unit: null, name: 'Eggs' }],
+    ['Tomatoes 2-3', { quantity: 2, unit: null, name: 'Tomatoes', note: '2–3' }],
+    // Not an amount: left as a note.
+    ['Chicken, cut into 2 slices', { quantity: null, name: 'Chicken', note: 'cut into 2 slices' }],
+    ['Eggs, 2 large', { quantity: null, name: 'Eggs', note: '2 large' }],
+    ['Vitamin B12', { quantity: null, name: 'Vitamin B12' }],
+    ['Mozarella cheese', { quantity: null, name: 'Mozarella cheese' }],
+  ])('amount after the name: %s', (line, expected) => {
     expect(parseIngredientLine(line)).toMatchObject({ optional: false, ...expected });
   });
 
@@ -94,5 +113,20 @@ describe('lines from recipe sites', () => {
       name: 'Gelatine powder', note: 'unflavoured gelatine, Note 2',
     });
     expect(parseIngredientLine('Optional – grated chocolate')).toMatchObject({ name: 'Grated chocolate', optional: true });
+  });
+});
+
+describe('looksLikeStepHeading', () => {
+  it.each(['Garlic Confit', 'To Serve', 'Cheesecake filling:', 'Salt and Pepper Rub', 'SAUCE'])('%s is a heading', (t) => {
+    expect(looksLikeStepHeading(t)).toBe(true);
+  });
+  it.each([
+    'Simmer garlic cloves in olive oil on low heat for 25-30 mins until soft.',
+    'Serve.',
+    'Bake for 20 minutes',
+    'Mix well',
+    'Spread the Garlic Butter Over the Bread Evenly',
+  ])('%s is a step', (t) => {
+    expect(looksLikeStepHeading(t)).toBe(false);
   });
 });

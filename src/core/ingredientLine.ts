@@ -42,9 +42,45 @@ function topLevelComma(s: string): number {
   return -1;
 }
 
+/** A word that can follow an amount as its unit ("g", "cups", "cloves"), or none at all. */
+const isUnitWord = (w: string) => {
+  const t = w.replace(/\.$/, '');
+  if (!t) return true;
+  const known = parseUnit(t);
+  return (known != null && known !== 'piece') || COUNT_UNITS.has(t.toLowerCase());
+};
+
+/**
+ * "Garlic, 50g", "Olive oil - 1/2 cup", "Parmesan: 2 Tbsp (optional)" or "Eggs 2":
+ * the amount written after the name, as in many captions and handwritten
+ * lists. Rewritten amount first ("50g Garlic") so the rest of the parser reads
+ * it as usual. Only when what follows the name is just an amount and a unit,
+ * so "Chicken, cut into 2 pieces" is left alone.
+ */
+const TRAILING_AMOUNT = new RegExp(
+  String.raw`^([^,:]*?\p{L}[^,:]*?)(?:\s*[,:]\s*|\s+[–—-]\s+|\s+)(${NUMBER}(?:\s*(?:-|–|to)\s*${NUMBER})?)\s*([a-zA-Z]+\.?(?:\s+[a-zA-Z]+\.?)?)?\s*(\([^()]*\))?\s*(?:,\s*(.*))?$`,
+  'u',
+);
+
+function amountFirst(line: string): string | null {
+  if (LEADING_AMOUNT.test(line)) return null;
+  const m = TRAILING_AMOUNT.exec(line);
+  if (!m) return null;
+  const [, name, amount, unitWords, paren, after] = m;
+  let unit = unitWords ?? '';
+  if (unit && !isUnitWord(unit)) {
+    // "1/2 tsp" is fine; "2 fl oz" is two words; "2 large" is not a unit.
+    if (unit.includes(' ') || !isUnitWord(unit.split(/\s+/)[0])) return null;
+  }
+  if (/\d$/.test(name.trim())) return null;
+  const tail = [paren, after ? `, ${after}` : ''].filter(Boolean).join(' ');
+  return `${amount}${unit ? ` ${unit}` : ''} ${name.trim()}${tail ? ` ${tail}` : ''}`.replace(/\s+,/g, ',');
+}
+
 export function parseIngredientLine(input: string): ParsedIngredientLine | null {
   let rest = input.trim().replace(/^[-•*·]\s*/, '').trim();
   if (!rest) return null;
+  rest = amountFirst(rest) ?? rest;
 
   // "60g / 4 tbsp butter" or "200g/ 7oz Oreos": keep the first measure, and the other goes in the note.
   let altMeasure: string | undefined;
@@ -129,6 +165,25 @@ export function parseIngredientLine(input: string): ParsedIngredientLine | null 
   for (const extra of [size, altMeasure, range]) if (extra) note = note ? `${extra}, ${note}` : extra;
   if (!name) return null;
   return { quantity, unit, name, note, optional };
+}
+
+/** Small words that stay lower case in a Title Case heading ("Salt and Pepper Rub"). */
+const MINOR_WORDS = /^(a|an|and|the|of|for|with|in|on|or|to|&)$/i;
+
+/**
+ * True for a short method line that names a part of the recipe rather than
+ * saying what to do: "Garlic Confit", "To Serve", "Cheesecake Filling:".
+ * A step is a sentence, so it ends in a full stop or starts with a verb in
+ * lower case words; a heading is a few capitalised words and nothing else.
+ */
+export function looksLikeStepHeading(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length > 40 || /\d/.test(t)) return false;
+  if (/:$/.test(t)) return t.split(/\s+/).length <= 6;
+  if (/[.!?,;)]$/.test(t)) return false;
+  const words = t.split(/\s+/);
+  if (words.length > 4) return false;
+  return words.every((w, i) => /^\p{Lu}/u.test(w) || (i > 0 && MINOR_WORDS.test(w)));
 }
 
 const AISLE_WORDS: Array<[Aisle, RegExp]> = [

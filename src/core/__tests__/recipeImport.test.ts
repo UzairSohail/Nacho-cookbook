@@ -47,8 +47,9 @@ describe('extractRecipe on a food blog with JSON-LD and a WP Recipe Maker card',
     expect(d.sourceUrl).toBe('https://example.com/red-velvet-cheesecake/');
     expect(d.lines[0]).toMatchObject({ kind: 'heading', text: 'Red velvet cake' });
     expect(d.lines[1]).toMatchObject({ amount: '1 1/4', unit: 'cups', name: 'Plain flour' });
-    expect(d.steps[0].text).toBe('Red velvet cake: Preheat oven to 160°C/320°F (140°C fan).');
-    expect(d.steps[1].text).toBe('Whisk flour, cocoa and baking soda. Add the rest and mix until smooth.');
+    expect(d.steps[0].text).toBe('Red velvet cake:');
+    expect(d.steps[1].text).toBe('Preheat oven to 160°C/320°F (140°C fan).');
+    expect(d.steps[2].text).toBe('Whisk flour, cocoa and baking soda. Add the rest and mix until smooth.');
     expect(hasErrors(validateDraft(d))).toBe(false);
     const saved = draftToRecipe(d);
     expect(saved.ingredients).toHaveLength(13);
