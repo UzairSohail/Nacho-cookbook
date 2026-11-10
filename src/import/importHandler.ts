@@ -4,11 +4,14 @@
  * this helper to fetch the page and find the recipe).
  *
  * POST { url } (or GET ?url=) → { recipe }, or { error, code } with a message to show.
+ * For signed-in people the page's recipe is then tidied by AI (or, with no
+ * recipe data on the page, found in the page's words by AI).
  * POST { text, sourceUrl? } → { recipe } sorted by AI (Gemini, see aiSort.ts), for
  * signed-in people only. The app falls back to its own rules when this fails.
  * Bundled into supabase/functions/import-recipe/index.ts by `npm run build:import-function`.
  */
-import { extractRecipe, NoRecipeFoundError } from '@/src/core/recipeImport';
+import { pageText, recipeAsText, withPageDetails } from '@/src/core/recipeForAi';
+import { extractRecipe, NoRecipeFoundError, type ImportedRecipe } from '@/src/core/recipeImport';
 import { AiSortError, MAX_TEXT_LENGTH, sortWithGemini } from './aiSort';
 import { fetchPage, ImportError, NO_RECIPE_MESSAGE } from './pageFetch';
 
@@ -67,6 +70,23 @@ async function sortText(req: Request, body: { text: string; sourceUrl?: unknown 
   }
 }
 
+/**
+ * The page's recipe sorted by AI, or null when AI isn't available (signed out,
+ * no key, allowance used up, failed), so the page's own recipe data is used.
+ */
+async function sortPageWithAi(req: Request, html: string, url: string, found: ImportedRecipe | null): Promise<ImportedRecipe | null> {
+  const apiKey = env('GEMINI_API_KEY');
+  if (!apiKey || !(await isSignedIn(req))) return null;
+  const text = found ? recipeAsText(found) : pageText(html);
+  if (text.trim().length < 40) return null;
+  try {
+    return withPageDetails(await sortWithGemini(text, url, { apiKey, model: env('GEMINI_MODEL') }), found, url);
+  } catch (e) {
+    if (!(e instanceof AiSortError) || e.code === 'failed') console.error('AI sort of page failed', url, e);
+    return null;
+  }
+}
+
 export async function handleImport(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'GET' && req.method !== 'POST') return json({ error: 'Use POST.', code: 'bad-url' }, 405);
@@ -76,7 +96,15 @@ export async function handleImport(req: Request): Promise<Response> {
   if (!target) return json({ error: 'Give a recipe address.', code: 'bad-url' }, 400);
   try {
     const page = await fetchPage(target);
-    return json({ recipe: extractRecipe(page.html, page.url) });
+    let found: ImportedRecipe | null = null;
+    try {
+      found = extractRecipe(page.html, page.url);
+    } catch (e) {
+      if (!(e instanceof NoRecipeFoundError)) throw e;
+    }
+    const recipe = (await sortPageWithAi(req, page.html, page.url, found)) ?? found;
+    if (!recipe) throw new NoRecipeFoundError();
+    return json({ recipe });
   } catch (e) {
     if (e instanceof NoRecipeFoundError) return json({ error: NO_RECIPE_MESSAGE, code: 'no-recipe' }, 422);
     if (e instanceof ImportError) return json({ error: e.message, code: e.code }, e.code === 'bad-url' ? 400 : 502);

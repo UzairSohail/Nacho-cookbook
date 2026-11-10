@@ -80,7 +80,7 @@ export default function ImportRecipeScreen() {
     try {
       const recipe = await importRecipe(address);
       setPendingImport(draftFromImport(recipe, state.settings.householdSize));
-      router.replace({ pathname: '/edit-recipe', params: { imported: '1' } });
+      router.replace({ pathname: '/edit-recipe', params: { imported: '1', sortedBy: recipe.foundBy === 'ai' ? 'ai' : 'rules' } });
     } catch (e) {
       setError(e instanceof ImportError ? e.message : 'Something went wrong reading that page. Try again, or add it by hand.');
       try {

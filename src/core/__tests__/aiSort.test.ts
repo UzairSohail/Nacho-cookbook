@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AiSortError, geminiRequest, recipeFromAnswer, sortWithGemini } from '@/src/import/aiSort';
+import { pageText, recipeAsText, withPageDetails } from '@/src/core/recipeForAi';
+import { extractRecipe } from '@/src/core/recipeImport';
 import { handleImport } from '@/src/import/importHandler';
+import wprmBlog from './pages/wprm-blog.html?raw';
 import { sortRecipeText } from '@/src/import/sortText';
 
 vi.mock('@/src/backend/supabase', () => ({ supabase: null }));
@@ -106,6 +109,9 @@ describe('import helper: sorting text', () => {
   const stubBackend = () => {
     vi.stubGlobal('Deno', { env: { get: (n: string) => env[n] } });
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('https://blog.test/')) {
+        return new Response(url.endsWith('/no-data') ? NO_DATA_PAGE : wprmBlog, { headers: { 'content-type': 'text/html' } });
+      }
       if (url.endsWith('/auth/v1/user')) {
         const auth = new Headers(init?.headers).get('authorization');
         return auth === 'Bearer user-token' ? new Response(JSON.stringify({ id: 'u1' })) : new Response('{}', { status: 401 });
@@ -133,6 +139,36 @@ describe('import helper: sorting text', () => {
     expect((await handleImport(post({ text: 'caption' }))).status).toBe(401);
   });
 
+  it('tidies a website recipe with AI for someone signed in, keeping the page photo', async () => {
+    const fetchMock = stubBackend();
+    const res = await handleImport(post({ url: 'https://blog.test/recipe' }, 'Bearer user-token'));
+    expect(res.status).toBe(200);
+    const { recipe } = await res.json();
+    expect(recipe.foundBy).toBe('ai');
+    expect(recipe.title).toBe('Crispy chilli beef');
+    const page = extractRecipe(wprmBlog, 'https://blog.test/recipe');
+    expect(recipe.imageUrl).toBe(page.imageUrl);
+    // Gemini was given the page's recipe written out, not the whole page.
+    const geminiCall = fetchMock.mock.calls.find(([u]) => String(u).includes('googleapis'))!;
+    expect(JSON.parse(String(geminiCall[1]!.body)).contents[0].parts[0].text).toContain(page.ingredients[0].items[0]);
+  });
+
+  it('finds a recipe in the page words with AI when the page has no recipe data', async () => {
+    stubBackend();
+    const res = await handleImport(post({ url: 'https://blog.test/no-data' }, 'Bearer user-token'));
+    expect(res.status).toBe(200);
+    expect((await res.json()).recipe.foundBy).toBe('ai');
+  });
+
+  it('uses the page recipe data as before when signed out', async () => {
+    const fetchMock = stubBackend();
+    const res = await handleImport(post({ url: 'https://blog.test/recipe' }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).recipe.foundBy).not.toBe('ai');
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('googleapis'))).toBe(false);
+    expect((await handleImport(post({ url: 'https://blog.test/no-data' }))).status).toBe(422);
+  });
+
   it('says when the Gemini key is not set yet', async () => {
     stubBackend();
     delete env.GEMINI_API_KEY;
@@ -140,6 +176,49 @@ describe('import helper: sorting text', () => {
     expect(res.status).toBe(503);
     expect((await res.json()).code).toBe('not-configured');
     env.GEMINI_API_KEY = 'gemini-key';
+  });
+});
+
+const NO_DATA_PAGE = `<html><head><title>Nan's scones | Blog</title></head><body><nav>Home Recipes About</nav>
+<main><h1>Nan's scones</h1><p>My nan made these every Sunday.</p><p>You need 3 cups self-raising flour, 1 cup cream and 1 cup lemonade.</p>
+<p>Mix, cut out and bake at 220C for 12 minutes.</p></main><footer>Copyright</footer><script>var x = 1;</script></body></html>`;
+
+describe('website recipes for AI', () => {
+  it('writes a found recipe out as text with its sections', () => {
+    const page = extractRecipe(wprmBlog, 'https://blog.test/recipe');
+    const text = recipeAsText(page);
+    expect(text.startsWith(page.title)).toBe(true);
+    expect(text).toContain('Ingredients');
+    expect(text).toContain(`- ${page.ingredients[0].items[0]}`);
+    expect(text).toContain(`1. ${page.instructions[0].steps[0]}`);
+  });
+
+  it('reads the words of a page with no recipe data, without menus or scripts', () => {
+    const text = pageText(NO_DATA_PAGE);
+    expect(text).toContain('3 cups self-raising flour');
+    expect(text).not.toContain('Home Recipes About');
+    expect(text).not.toContain('var x');
+    expect(text).not.toContain('Copyright');
+  });
+
+  it('cuts a long page to the part around the ingredients', () => {
+    const story = '<p>' + 'A long story about summer. '.repeat(2000) + '</p>';
+    const text = pageText(`<body><h1>Scones</h1>${story}<h2>Ingredients</h2><ul><li>3 cups flour</li></ul></body>`);
+    expect(text.length).toBeLessThanOrEqual(20_000);
+    expect(text).toContain('3 cups flour');
+    expect(text.startsWith('Scones')).toBe(true);
+  });
+
+  it('keeps the page photo, address and numbers with the AI recipe', () => {
+    const ai = recipeFromAnswer(JSON.stringify({ ...answer, servings: null, title: '' }));
+    const page = extractRecipe(wprmBlog, 'https://blog.test/recipe');
+    const r = withPageDetails(ai, page, 'https://blog.test/recipe');
+    expect(r.title).toBe(page.title);
+    expect(r.imageUrl).toBe(page.imageUrl);
+    expect(r.servings).toBe(page.servings);
+    expect(r.ingredients).toEqual(ai.ingredients);
+    expect(r.sourceUrl).toBe('https://blog.test/recipe');
+    expect(withPageDetails(ai, null, 'https://x.test/').sourceUrl).toBe('https://x.test/');
   });
 });
 

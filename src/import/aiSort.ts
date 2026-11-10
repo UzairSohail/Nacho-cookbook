@@ -8,13 +8,14 @@
  * which is checked and turned into the same ImportedRecipe the rule-based
  * reader (src/core/recipeText.ts) makes, so the editor treats both alike.
  */
+import { MAX_AI_TEXT } from '@/src/core/recipeForAi';
 import type { ImportedIngredientGroup, ImportedRecipe, ImportedStepGroup } from '@/src/core/recipeImport';
 
 /** Gemini's "always the current Flash model" name, so the app keeps working when Google retires a version. */
 export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
 
 /** Longer text than this isn't a recipe (and would eat the free quota). */
-export const MAX_TEXT_LENGTH = 20_000;
+export const MAX_TEXT_LENGTH = MAX_AI_TEXT;
 
 export class AiSortError extends Error {
   constructor(
