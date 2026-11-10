@@ -41,11 +41,17 @@ type RequestBody = { url?: unknown; text?: unknown; sourceUrl?: unknown } | null
 export async function isSignedIn(req: Request, fetchImpl: typeof fetch = fetch): Promise<boolean> {
   const auth = req.headers.get('authorization');
   const supabaseUrl = env('SUPABASE_URL');
-  const anonKey = env('SUPABASE_ANON_KEY');
-  if (!auth || !supabaseUrl || !anonKey) return false;
+  // The app's own public key, which the app sends with every call. The
+  // function's SUPABASE_ANON_KEY is the old-style key, which Supabase rejects
+  // once a project has switched to the new publishable keys.
+  const apiKey = req.headers.get('apikey') || env('SUPABASE_ANON_KEY');
+  if (!auth || !supabaseUrl || !apiKey) return false;
   try {
-    const res = await fetchImpl(`${supabaseUrl}/auth/v1/user`, { headers: { authorization: auth, apikey: anonKey } });
-    if (!res.ok) return false;
+    const res = await fetchImpl(`${supabaseUrl}/auth/v1/user`, { headers: { authorization: auth, apikey: apiKey } });
+    if (!res.ok) {
+      console.warn('Sign-in check failed', res.status, (await res.text().catch(() => '')).slice(0, 200));
+      return false;
+    }
     const user = (await res.json().catch(() => null)) as { id?: string } | null;
     return typeof user?.id === 'string';
   } catch {
@@ -74,16 +80,22 @@ async function sortText(req: Request, body: { text: string; sourceUrl?: unknown 
  * The page's recipe sorted by AI, or null when AI isn't available (signed out,
  * no key, allowance used up, failed), so the page's own recipe data is used.
  */
-async function sortPageWithAi(req: Request, html: string, url: string, found: ImportedRecipe | null): Promise<ImportedRecipe | null> {
+async function sortPageWithAi(
+  req: Request,
+  html: string,
+  url: string,
+  found: ImportedRecipe | null,
+): Promise<{ recipe: ImportedRecipe } | { reason: string }> {
   const apiKey = env('GEMINI_API_KEY');
-  if (!apiKey || !(await isSignedIn(req))) return null;
+  if (!apiKey) return { reason: 'the Gemini key isn’t set up on the import helper.' };
+  if (!(await isSignedIn(req))) return { reason: 'the import helper couldn’t confirm you’re signed in.' };
   const text = found ? recipeAsText(found) : pageText(html);
-  if (text.trim().length < 40) return null;
+  if (text.trim().length < 40) return { reason: 'the page had too little text.' };
   try {
-    return withPageDetails(await sortWithGemini(text, url, { apiKey, model: env('GEMINI_MODEL') }), found, url);
+    return { recipe: withPageDetails(await sortWithGemini(text, url, { apiKey, model: env('GEMINI_MODEL') }), found, url) };
   } catch (e) {
     if (!(e instanceof AiSortError) || e.code === 'failed') console.error('AI sort of page failed', url, e);
-    return null;
+    return { reason: e instanceof AiSortError ? e.message : 'AI sorting failed.' };
   }
 }
 
@@ -102,9 +114,10 @@ export async function handleImport(req: Request): Promise<Response> {
     } catch (e) {
       if (!(e instanceof NoRecipeFoundError)) throw e;
     }
-    const recipe = (await sortPageWithAi(req, page.html, page.url, found)) ?? found;
-    if (!recipe) throw new NoRecipeFoundError();
-    return json({ recipe });
+    const ai = await sortPageWithAi(req, page.html, page.url, found);
+    if ('recipe' in ai) return json({ recipe: ai.recipe });
+    if (!found) throw new NoRecipeFoundError();
+    return json({ recipe: { ...found, aiNote: ai.reason } });
   } catch (e) {
     if (e instanceof NoRecipeFoundError) return json({ error: NO_RECIPE_MESSAGE, code: 'no-recipe' }, 422);
     if (e instanceof ImportError) return json({ error: e.message, code: e.code }, e.code === 'bad-url' ? 400 : 502);

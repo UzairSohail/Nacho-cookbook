@@ -17,33 +17,39 @@ export type SortedBy = 'ai' | 'rules';
 /** How long to wait for the AI before using the rules. */
 const AI_TIMEOUT_MS = 30_000;
 
-/** The recipe from the AI, or null when it isn't available. Never throws. */
-export async function sortWithAi(text: string, sourceUrl: string): Promise<ImportedRecipe | null> {
-  if (!supabase) return null;
+/** The recipe from the AI, or why it isn't available. Never throws. */
+export async function sortWithAi(text: string, sourceUrl: string): Promise<{ recipe: ImportedRecipe } | { reason: string }> {
+  if (!supabase) return { reason: 'demo mode.' };
   try {
     const { data: session } = await supabase.auth.getSession();
-    if (!session.session) return null;
-    const { data } = await supabase.functions.invoke<{ recipe?: ImportedRecipe }>(IMPORT_FUNCTION, {
+    if (!session.session) return { reason: 'you’re signed out.' };
+    const { data, error } = await supabase.functions.invoke<{ recipe?: ImportedRecipe }>(IMPORT_FUNCTION, {
       body: { text, sourceUrl },
       timeout: AI_TIMEOUT_MS,
     });
     const recipe = data?.recipe;
-    return recipe && Array.isArray(recipe.ingredients) && recipe.ingredients.length ? recipe : null;
-  } catch {
-    return null;
+    if (recipe && Array.isArray(recipe.ingredients) && recipe.ingredients.length) return { recipe };
+    // The helper's answer with a message comes back as an error with the response attached.
+    const response = (error as { context?: unknown } | null)?.context;
+    const body = response instanceof Response ? ((await response.json().catch(() => null)) as { error?: string } | null) : null;
+    if (body?.error) return { reason: body.error };
+    return { reason: error ? `couldn’t reach the import helper (${error.message}).` : 'the AI found no recipe.' };
+  } catch (e) {
+    return { reason: `couldn’t reach the import helper (${e instanceof Error ? e.message : String(e)}).` };
   }
 }
 
 /**
  * Sorts the text, by AI when possible and by the app's rules otherwise. Throws
  * NoRecipeTextError (from the rules) when no ingredients can be found either way.
+ * The rules' recipe carries why AI wasn't used, as aiNote.
  */
 export async function sortRecipeText(
   text: string,
   sourceUrl = '',
-  ai: (text: string, sourceUrl: string) => Promise<ImportedRecipe | null> = sortWithAi,
+  ai: (text: string, sourceUrl: string) => Promise<{ recipe: ImportedRecipe } | { reason: string }> = sortWithAi,
 ): Promise<{ recipe: ImportedRecipe; sortedBy: SortedBy }> {
-  const recipe = await ai(text, sourceUrl);
-  if (recipe) return { recipe: { ...recipe, sourceUrl: recipe.sourceUrl || sourceUrl }, sortedBy: 'ai' };
-  return { recipe: parseRecipeText(text, sourceUrl), sortedBy: 'rules' };
+  const result = await ai(text, sourceUrl);
+  if ('recipe' in result) return { recipe: { ...result.recipe, sourceUrl: result.recipe.sourceUrl || sourceUrl }, sortedBy: 'ai' };
+  return { recipe: { ...parseRecipeText(text, sourceUrl), aiNote: result.reason }, sortedBy: 'rules' };
 }

@@ -40,6 +40,8 @@ export interface ImportedRecipe {
   tags: string[];
   imageUrl?: string;
   sourceUrl: string;
+  /** Why AI didn't sort it, when it was tried and wasn't available, for troubleshooting. */
+  aiNote?: string;
   /** Which method found it, for troubleshooting. */
   foundBy: 'json-ld' | 'recipe-card' | 'microdata' | 'headings' | 'pasted' | 'ai';
 }

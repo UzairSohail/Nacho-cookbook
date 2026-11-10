@@ -37,7 +37,7 @@ const hostOf = (url: string) => {
 
 /** Add a recipe (no id) or edit one (?id=...). */
 export default function EditRecipeScreen() {
-  const { id, imported, sortedBy } = useLocalSearchParams<{ id?: string; imported?: string; sortedBy?: string }>();
+  const { id, imported, sortedBy, aiNote } = useLocalSearchParams<{ id?: string; imported?: string; sortedBy?: string; aiNote?: string }>();
   const { state, dispatch } = useStore();
   const existing = useRecipeMap().get(id ?? '');
   const catalog = useCatalog();
@@ -144,9 +144,7 @@ export default function EditRecipeScreen() {
               <Text variant="muted">
                 {sortedBy === 'ai'
                   ? 'Sorted by AI (Gemini).'
-                  : pasted
-                    ? 'Sorted by the app’s built-in rules (AI wasn’t available).'
-                    : 'Read from the page’s recipe card (AI wasn’t available).'}
+                  : `${pasted ? 'Sorted by the app’s built-in rules' : 'Read from the page’s recipe card'}. AI wasn’t used: ${aiNote || 'not available.'}`}
               </Text>
             ) : null}
           </Card>
