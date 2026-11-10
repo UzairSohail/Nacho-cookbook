@@ -12,6 +12,32 @@ const MAX_REDIRECTS = 5;
 /** The Supabase Edge Function that reads pages for the web app and sorts text with AI. */
 export const IMPORT_FUNCTION = 'import-recipe';
 
+/**
+ * The import helper's answer when it replied with an error status: its
+ * message (ours is { error }, Supabase's own gateway uses { message } or
+ * { msg }) and the status code. Reads the attached response without relying on
+ * `instanceof Response`, which can be false in React Native.
+ */
+export async function functionError(error: unknown): Promise<{ status?: number; message?: string; code?: string }> {
+  const context = (error as { context?: unknown } | null)?.context as
+    | { status?: number; text?: () => Promise<string> }
+    | undefined;
+  if (!context || typeof context.text !== 'function') return {};
+  const text = await context.text().catch(() => '');
+  let body: { error?: unknown; message?: unknown; msg?: unknown; code?: unknown } | null = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = null;
+  }
+  const pick = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
+  return {
+    status: context.status,
+    message: pick(body?.error) ?? pick(body?.message) ?? pick(body?.msg) ?? (text.trim().slice(0, 200) || undefined),
+    code: pick(body?.code),
+  };
+}
+
 export const BROWSER_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36',

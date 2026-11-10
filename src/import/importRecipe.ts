@@ -9,7 +9,7 @@ import { Platform } from 'react-native';
 import { extractRecipe, NoRecipeFoundError, type ImportedRecipe } from '@/src/core/recipeImport';
 import { supabase } from '@/src/backend/supabase';
 import { pageText, recipeAsText, withPageDetails } from '@/src/core/recipeForAi';
-import { checkUrl, fetchPage, IMPORT_FUNCTION, ImportError, NO_RECIPE_MESSAGE } from './pageFetch';
+import { checkUrl, fetchPage, functionError, IMPORT_FUNCTION, ImportError, NO_RECIPE_MESSAGE } from './pageFetch';
 import { sortWithAi } from './sortText';
 
 export { ImportError } from './pageFetch';
@@ -43,8 +43,7 @@ async function viaFunction(url: string): Promise<ImportedRecipe> {
   const { data, error } = await supabase.functions.invoke<FunctionBody>(IMPORT_FUNCTION, { body: { url } });
   if (data?.recipe) return data.recipe;
   // A helper answer with a message (no recipe, blocked site...) comes back as an error with the response attached.
-  const response = (error as { context?: unknown } | null)?.context;
-  const body = response instanceof Response ? ((await response.json().catch(() => null)) as FunctionBody) : null;
-  if (body?.error) throw new ImportError(body.error, body.code ?? 'unreachable');
+  const answer = await functionError(error);
+  if (answer.status && answer.message) throw new ImportError(answer.message, (answer.code as ImportError['code']) ?? 'unreachable');
   throw new ImportError("Couldn't reach the import service. Check your connection.", 'unreachable');
 }
