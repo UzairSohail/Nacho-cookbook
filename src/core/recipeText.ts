@@ -34,7 +34,53 @@ const JUNK =
  * A nutrition line from a caption: "Macros per serving (x3 servings): approx 607
  * calories | 45g P | 39g C | 30g F" or "75gC | 30gF | 140gP". Never an ingredient.
  */
-const MACROS = /^\(?\s*(macros?|nutrition( info)?|calories)\b|\b\d+\s*g\s*(p|c|f|protein|carbs?|fat)\b\s*\|/i;
+const MACROS =
+  /^\(?\s*(macros?|nutrition( info)?|calories)\b|\b\d+\s*g\s*(p|c|f|protein|carbs?|fat)\b\s*\||^per\b[^:]{0,40}:?\s*\d+\s*(k?cals?|calories)\b/i;
+
+/** "#mealprep #highprotein #naan highproteinmealprep": the caption's tags, never part of the recipe. */
+const HASHTAG_LINE = /^#[\p{L}\p{N}_]+(\s+#?[\p{L}\p{N}_]+)*$/u;
+const TRAILING_HASHTAGS = /(\s+#[\p{L}\p{N}_]+)+$/u;
+
+/**
+ * "Storage & Heating", "To reheat", "Make ahead": how to keep and warm up the
+ * dish. They are steps to follow, so they go in the method under that heading.
+ */
+const STORAGE_HEADING =
+  /^(storage|storing|to store|reheat(ing)?|to reheat|heating|freezing|to freeze|leftovers|make[- ]ahead|meal[- ]prep)(\s*(and|&|\/|,)\s*(storage|storing|heating|reheating|freezing|leftovers))*(\s+(instructions?|tips|notes|guide))?$/i;
+const storageHeading = (line: string) => {
+  const l = stripHeadingColon(line.replace(/^#+\s*/, ''));
+  return STORAGE_HEADING.test(l) ? l : undefined;
+};
+
+/** A word that leaves a line unfinished, so the next line carries on from it: "...at 200°C till". */
+const DANGLING_WORD = /\b(till|until|and|or|to|with|the|a|an|of|for|in|on|at|then|into|from|about)$/i;
+
+/**
+ * Bullets a copy broke in two: "- airfry for 4-5 minutes at 200°C till" then
+ * "Crispy and lightly puffed again". Gives the indexes of lines joined onto the
+ * bullet before them.
+ */
+function joinBrokenBullets(lines: string[]): Set<number> {
+  const joined = new Set<number>();
+  const canJoin = (line: string, next: string | undefined) =>
+    !!next &&
+    /^[-•*·]\s/.test(line) &&
+    !/^[-•*·]\s/.test(next) &&
+    !/[.!?:]$/.test(line) &&
+    !sectionOf(next) &&
+    !storageHeading(next) &&
+    !STARTS_WITH_AMOUNT.test(next) &&
+    (DANGLING_WORD.test(line) || /^[a-z]/.test(next));
+  for (let i = 0; i < lines.length; i++) {
+    let j = i + 1;
+    while (canJoin(lines[i], lines[j])) {
+      lines[i] = `${lines[i]} ${lines[j][0].toLowerCase()}${lines[j].slice(1)}`;
+      joined.add(j++);
+    }
+    i = j - 1;
+  }
+  return joined;
+}
 
 /** Emoji people put after ingredients and steps in captions ("Chives, to garnish 🌿"). */
 const EMOJI = /[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}\u{FE0F}\u{200D}\u{20E3}]/gu;
@@ -404,6 +450,13 @@ function sortUnlabelledLines(rest: string[], intro: string[], ingredientLines: s
       afterStep = true;
       continue;
     }
+    const store = storageHeading(l);
+    if (store) {
+      steps.push(`${store}:`);
+      inMethod = true;
+      afterStep = false;
+      continue;
+    }
     const heading = captionHeading(l);
     if (heading !== undefined) {
       ingredientLines.push(`${heading}:`);
@@ -428,7 +481,14 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
   const lines = rawLines
     .map((l) => withoutEmoji(tidy(l)))
     // Bullets and markdown emphasis people paste from notes apps.
-    .map((l) => l.replace(/^\*\*(.+)\*\*$/, '$1').replace(/^__(.+)__$/, '$1'));
+    .map((l) => l.replace(/^\*\*(.+)\*\*$/, '$1').replace(/^__(.+)__$/, '$1'))
+    .map((l) => (HASHTAG_LINE.test(l) ? '' : l.replace(TRAILING_HASHTAGS, '')));
+  const joined = joinBrokenBullets(lines);
+  /** The next line with words on it, for spotting a heading over a list. */
+  const nextLine = (k: number) => {
+    for (let n = k + 1; n < lines.length; n++) if (lines[n] && !joined.has(n)) return lines[n];
+    return undefined;
+  };
 
   const details: Details = { tags: [] };
   let title = '';
@@ -450,9 +510,14 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
   const unlabelled = !lines.some((l) => l && (sectionOf(l) === 'ingredients' || partHeading(l, 'intro')?.section === 'ingredients'));
   /** In an unlabelled recipe, the ingredients or steps have started: no more title or details. */
   let bodyStarted = false;
+  /** A steps heading or step has been read, so a notes paragraph stays a note. */
+  let sawMethod = false;
 
   for (let index = 0; index < lines.length; index++) {
+    if (joined.has(index)) continue;
+    if (section === 'method') sawMethod = true;
     const raw = lines[index];
+    const afterBlank = index === 0 || !lines[index - 1];
     if (!raw) {
       pendingLabel = undefined;
       continue;
@@ -510,6 +575,32 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
       continue;
     }
     if (section === 'skip') continue;
+    // "Storage & Heating" after the recipe: how to keep and reheat it, as steps under that heading.
+    const storage = section === 'intro' ? undefined : storageHeading(line);
+    if (storage) {
+      section = 'method';
+      sawMethod = true;
+      methodLines.push(`${storage}:`);
+      continue;
+    }
+    // A paragraph after the notes that says what to do ("Place in a pan…") when no steps have
+    // come yet: the cook put the method below their tips, without a heading.
+    if (section === 'notes' && sawIngredientsHeading && !sawMethod && afterBlank && !/^[-•*·]\s/.test(line) && startsSteps(line)) {
+      section = 'method';
+    }
+    // "Garlic butter (optional)" over a bulleted list: a part of the ingredients, with no colon.
+    if (
+      section === 'ingredients' &&
+      afterBlank &&
+      line.length <= 50 &&
+      line.split(/\s+/).length <= 6 &&
+      !startsLikeIngredient(line) &&
+      !/[.!?,;]$/.test(line) &&
+      /^[-•*·]\s/.test(nextLine(index) ?? '')
+    ) {
+      ingredientLines.push(`${stripHeadingColon(line)}:`);
+      continue;
+    }
     if (section === 'intro' && pendingLabel) {
       const key = pendingLabel;
       pendingLabel = undefined;
@@ -569,6 +660,12 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
         intro.push(split[1][0].toUpperCase() + split[1].slice(1));
         continue;
       }
+      // "High Protein Cheesy Garlic Naans!": a name said with excitement on the first line.
+      const exclaimed = line.replace(/\s*!+$/, '');
+      if (!title && !intro.length && exclaimed !== line && exclaimed.split(/\s+/).length <= 8 && looksLikeTitle(exclaimed)) {
+        title = exclaimed;
+        continue;
+      }
       if (!title && looksLikeTitle(line)) {
         title = line
           .replace(/[\s\p{Extended_Pictographic}\u{FE0F}\u{200D}]+$/u, '')
@@ -588,7 +685,10 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
     // Steps straight after the ingredients, with no Method heading: numbered, or plain sentences in a caption.
     if (section === 'ingredients' && startsSteps(line)) section = 'method';
     if (section === 'ingredients') ingredientLines.push(line);
-    else if (section === 'method') methodLines.push(line);
+    else if (section === 'method') {
+      methodLines.push(line);
+      sawMethod = true;
+    }
     else if (section === 'notes') notes.push(line);
   }
 

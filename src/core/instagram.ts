@@ -50,6 +50,8 @@ export function instagramPost(link: string): InstagramPost | null {
 
 /** Only hashtags and @mentions on the line. */
 const TAG_LINE = /^([#@][\p{L}\p{N}_.]+[\s,.]*)+$/u;
+/** "#mealprep #naan highproteinmealprep tastymealprep": tags, some missing their "#". */
+const LOOSE_TAG_LINE = /^#[\p{L}\p{N}_]+([\s,.]+#[\p{L}\p{N}_]+)+([\s,.]+#?[\p{L}\p{N}_]+)*[\s,.]*$/u;
 /** Emoji, arrows and bullets that cooks put in front of ingredients and headings. */
 const LEAD = /^[\s\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{20E3}•·▪▫◾◽►▶→➡✓✔*-]+/u;
 
@@ -73,7 +75,7 @@ export function cleanCaption(raw: string): string {
     .filter((line) => !/^view all [\d,.]+k? comments?$/i.test(line.trim()) && !CALL_TO_ACTION.test(line));
 
   // Drop hashtag-only lines, which usually close the caption.
-  const kept = lines.filter((line) => !TAG_LINE.test(line.trim()));
+  const kept = lines.filter((line) => !TAG_LINE.test(line.trim()) && !LOOSE_TAG_LINE.test(line.trim()));
   // Hashtags trailing the last line of text, e.g. "Enjoy! #pasta #dinner".
   const text = kept
     .join('\n')
