@@ -10,7 +10,7 @@
  * 4. As a last resort, the lists under headings such as "Ingredients" and
  *    "Method".
  *
- * Runs in the app (Android) and in the Netlify function (web), so it must not
+ * Runs in the app (Android) and in the web import helper (Supabase Edge Function), so it must not
  * use the DOM or relative-path aliases.
  */
 import { parse, type HTMLElement, NodeType, type Node } from 'node-html-parser';

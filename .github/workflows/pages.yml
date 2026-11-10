@@ -1,0 +1,62 @@
+# Publishes the web app to GitHub Pages: https://uzairsohail.github.io/Nacho-cookbook/
+# Runs on every merge to master that touches the app, and from
+# Actions > Publish web app > Run workflow. One-time setup: Settings > Pages >
+# Build and deployment > Source: GitHub Actions.
+name: Publish web app
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - "docs/**"
+      - "supabase/**"
+      - "powersync/**"
+      - "**/__tests__/**"
+      - "**.md"
+      - ".github/workflows/android-apk.yml"
+      - ".github/workflows/import-function.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Built for the /Nacho-cookbook address (experiments.baseUrl in app.json).
+      - run: npx expo export --platform web
+
+      # GitHub Pages has no "every route serves index.html" setting, so links
+      # such as /Nacho-cookbook/recipe/abc load the app from 404.html instead.
+      # .nojekyll keeps the _expo folder from being dropped.
+      - run: cp dist/index.html dist/404.html && touch dist/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

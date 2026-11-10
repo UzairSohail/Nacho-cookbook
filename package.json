@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "esbuild": "^0.28.2",
     "typescript": "~6.0.3",
     "vitest": "^5.1.0"
   },
@@ -51,7 +52,8 @@
     "web": "expo start --web",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "postinstall": "powersync-web copy-assets --output public"
+    "postinstall": "powersync-web copy-assets --output public",
+    "build:import-function": "node scripts/build-import-function.mjs"
   },
   "private": true
 }

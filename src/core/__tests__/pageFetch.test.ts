@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import handler from '@/netlify/functions/import-recipe.mjs';
+import { handleImport } from '@/src/import/importHandler';
 import { checkUrl, fetchPage, ImportError } from '@/src/import/pageFetch';
 import wprmBlog from './pages/wprm-blog.html?raw';
 
@@ -39,7 +39,9 @@ describe('fetchPage', () => {
 
 describe('the web app import function', () => {
   afterEach(() => vi.unstubAllGlobals());
-  const call = (q: string) => handler(new Request(`https://nachocookbook.netlify.app/.netlify/functions/import-recipe${q}`));
+  const call = (q: string) => handleImport(new Request(`https://example.supabase.co/functions/v1/import-recipe${q}`));
+  const post = (body: unknown) =>
+    handleImport(new Request('https://example.supabase.co/functions/v1/import-recipe', { method: 'POST', body: JSON.stringify(body) }));
 
   it('returns just the recipe found on the page', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => html(wprmBlog)));
@@ -54,5 +56,15 @@ describe('the web app import function', () => {
     expect(await (await call('?url=https://example.com/about')).json()).toMatchObject({ code: 'no-recipe' });
     expect((await call('?url=http://127.0.0.1/')).status).toBe(400);
     expect((await call('')).status).toBe(400);
+  });
+  it('takes the address in a POST body, as the web app sends it, and answers CORS checks', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => html(wprmBlog)));
+    const res = await post({ url: 'https://example.com/red-velvet-cheesecake/' });
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    expect((await res.json()).recipe.title).toBe('Red Velvet Cheesecake');
+    expect((await post({})).status).toBe(400);
+    const preflight = await handleImport(new Request('https://example.supabase.co/functions/v1/import-recipe', { method: 'OPTIONS' }));
+    expect(preflight.status).toBe(200);
+    expect(preflight.headers.get('access-control-allow-headers')).toContain('authorization');
   });
 });

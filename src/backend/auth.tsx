@@ -11,7 +11,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { Platform } from 'react-native';
 
-import { openedFromResetLink, supabase, WEB_APP_URL } from './supabase';
+import { openedFromResetLink, supabase, WEB_APP_URL, webPath } from './supabase';
 import { getDatabase } from './sync/database';
 
 export interface Household {
@@ -178,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!supabase) return 'Sign-in is not set up yet.';
         if (!email.trim()) return 'Type your email above first.';
         // The web app is where a new password is chosen, also when asked from the Android app.
-        const redirectTo = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : WEB_APP_URL;
+        const redirectTo = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin + webPath('/') : WEB_APP_URL;
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
         return error ? friendlyError(error.message) : null;
       },
