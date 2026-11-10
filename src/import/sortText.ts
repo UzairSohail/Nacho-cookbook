@@ -10,7 +10,7 @@
 import { supabase } from '@/src/backend/supabase';
 import type { ImportedRecipe } from '@/src/core/recipeImport';
 import { parseRecipeText } from '@/src/core/recipeText';
-import { IMPORT_FUNCTION } from './pageFetch';
+import { functionError, IMPORT_FUNCTION } from './pageFetch';
 
 export type SortedBy = 'ai' | 'rules';
 
@@ -29,11 +29,11 @@ export async function sortWithAi(text: string, sourceUrl: string): Promise<{ rec
     });
     const recipe = data?.recipe;
     if (recipe && Array.isArray(recipe.ingredients) && recipe.ingredients.length) return { recipe };
+    if (!error) return { reason: 'the AI found no recipe.' };
     // The helper's answer with a message comes back as an error with the response attached.
-    const response = (error as { context?: unknown } | null)?.context;
-    const body = response instanceof Response ? ((await response.json().catch(() => null)) as { error?: string } | null) : null;
-    if (body?.error) return { reason: body.error };
-    return { reason: error ? `couldn’t reach the import helper (${error.message}).` : 'the AI found no recipe.' };
+    const { status, message } = await functionError(error);
+    if (status) return { reason: `${message ?? 'the import helper said no'} (status ${status}).` };
+    return { reason: `couldn’t reach the import helper (${error.message}).` };
   } catch (e) {
     return { reason: `couldn’t reach the import helper (${e instanceof Error ? e.message : String(e)}).` };
   }

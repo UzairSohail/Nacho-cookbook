@@ -261,3 +261,22 @@ describe('sortRecipeText', () => {
     expect((await sortRecipeText(text)).sortedBy).toBe('rules');
   });
 });
+
+describe('functionError', () => {
+  it('reads the helper message and status without needing a real Response', async () => {
+    const { functionError } = await import('@/src/import/pageFetch');
+    const fake = (status: number, text: string) => ({ context: { status, text: async () => text } });
+    expect(await functionError(fake(401, '{"error":"Sign in to sort recipes with AI.","code":"signed-out"}'))).toEqual({
+      status: 401,
+      message: 'Sign in to sort recipes with AI.',
+      code: 'signed-out',
+    });
+    // Supabase's own gateway answers in its own shape.
+    expect(await functionError(fake(401, '{"code":"UNAUTHORIZED_ASYMMETRIC_JWT","message":"Invalid JWT"}'))).toMatchObject({
+      status: 401,
+      message: 'Invalid JWT',
+    });
+    expect(await functionError(fake(546, 'worker boot error'))).toMatchObject({ status: 546, message: 'worker boot error' });
+    expect(await functionError(new Error('offline'))).toEqual({});
+  });
+});
