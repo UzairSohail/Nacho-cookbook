@@ -50,4 +50,4 @@ jobs:
           if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
             echo "::error::Add the SUPABASE_ACCESS_TOKEN repository secret first (see README)."; exit 1
           fi
-          supabase functions deploy import-recipe --project-ref jxquqfsloyzgvtwaktzy --use-api
+          supabase functions deploy import-recipe --remote=jxquqfsloyzgvtwaktzy --use-api --yes
