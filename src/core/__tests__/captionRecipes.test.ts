@@ -12,6 +12,7 @@ import stickyChicken from './captions/sticky-chicken-fries.txt?raw';
 import brownies from './captions/story-then-recipe.txt?raw';
 import salmon from './captions/unlabelled-parts.txt?raw';
 import burritoBowl from './captions/what-you-need-bowl.txt?raw';
+import naan from './captions/garlic-naan-storage.txt?raw';
 
 /**
  * Real recipe captions, typed from screenshots of the app's paste box. They
@@ -231,5 +232,51 @@ describe('captions without the usual headings', () => {
     expect(r.notes).toBe("Don't overcook the prawns or they go rubbery!");
     const saved = draftToRecipe(draftFromImport(r, 2));
     expect(saved.ingredients[0]).toMatchObject({ name: 'Prawns', quantity: 500, unit: 'g' });
+  });
+
+  it('finds the method below the notes, keeps "Storage & Heating" as steps and drops the hashtags', () => {
+    const r = parse(naan);
+    expect(r.title).toBe('High Protein Cheesy Garlic Naans');
+    expect(r.ingredients.map((g) => [g.heading, g.items.length])).toEqual([
+      ['Naan', 5],
+      ['Garlic butter (optional)', 3],
+    ]);
+    expect(r.instructions).toEqual([
+      {
+        steps: [
+          'Place in a pan with cooking spray on medium-low heat, cover with a lid and cook for 1-2 minutes then flip and cook till the naan puffs up',
+        ],
+      },
+      {
+        heading: 'Storage & Heating',
+        steps: [
+          'Once cooled wrap in foil and store in the fridge or freezer',
+          'To reheat from the fridge, unwrap from the foil and airfry for for 4-5 minutes at 200°C till crispy and lightly puffed again',
+          'to reheat from the freezer unwrap from the foil, airfry at 200° for 10-12 minutes to get crispy and light puffed',
+        ],
+      },
+    ]);
+    expect(r.notes).toMatch(/^once you’ve mixed the dough into clumps let it rest/);
+    expect(r.notes).not.toMatch(/#|Place in a pan|Storage/);
+    expect(JSON.stringify(r)).not.toMatch(/#mealprep|tastymealprep|calories\b.*Per Naan/);
+  });
+
+  it('keeps a notes paragraph as a note once the steps have been given', () => {
+    const r = parseRecipeText(
+      'Toast\n\nIngredients\n- 2 slices bread\n- 1 tbsp butter\n\nMethod\n1. Toast the bread.\n2. Spread the butter.\n\nNotes\n- Any bread works\n\nServe it while warm with a cup of tea.',
+    );
+    expect(steps(r)).toEqual(['Toast the bread.', 'Spread the butter.']);
+    expect(r.notes).toBe('Any bread works\nServe it while warm with a cup of tea.');
+  });
+
+  it('puts storage and reheating sections in the method in captions without headings too', () => {
+    const r = parse(
+      'Chicken soup\n\n- 500g chicken thighs\n- 1 litre stock\n- 2 carrots, diced\n\nSimmer everything for 30 minutes, then shred the chicken.\n\nTo reheat:\nWarm on the stove until hot. #soup #easy',
+    );
+    expect(r.ingredients[0].items).toHaveLength(3);
+    expect(r.instructions).toEqual([
+      { steps: ['Simmer everything for 30 minutes, then shred the chicken.'] },
+      { heading: 'To reheat', steps: ['Warm on the stove until hot.'] },
+    ]);
   });
 });
