@@ -8,9 +8,10 @@ import InstagramCaptionReader from '@/components/InstagramCaptionReader';
 import { Button, Card, Text, TextInput, useTheme } from '@/components/Themed';
 import { captionFromEmbedHtml, instagramPost, type InstagramPost } from '@/src/core/instagram';
 import { importRecipe, ImportError } from '@/src/import/importRecipe';
-import { NoRecipeTextError, parseRecipeText } from '@/src/core/recipeText';
+import { NoRecipeTextError } from '@/src/core/recipeText';
 import { checkUrl } from '@/src/import/pageFetch';
 import { PhotoTextError, readPhotoText } from '@/src/import/photoText';
+import { sortRecipeText } from '@/src/import/sortText';
 import { setPendingImport } from '@/src/state/pendingImport';
 import { draftFromImport } from '@/src/state/recipeDraft';
 import { useStore } from '@/src/state/store';
@@ -116,18 +117,23 @@ export default function ImportRecipeScreen() {
     if (!existing) go(params.url);
   }, [params.url]);
 
-  const sortText = () => {
-    if (!text.trim()) return;
+  const sortText = async () => {
+    if (!text.trim() || busy) return;
+    setError(null);
+    setBusy(true);
     try {
-      const recipe = parseRecipeText(text, failedUrl ?? '');
+      // Sorted by AI when signed in and online, by the app's own rules otherwise.
+      const { recipe, sortedBy } = await sortRecipeText(text, failedUrl ?? '');
       setPendingImport(draftFromImport(recipe, state.settings.householdSize));
-      router.replace({ pathname: '/edit-recipe', params: { imported: photoPages > 0 ? 'photo' : 'text' } });
+      router.replace({ pathname: '/edit-recipe', params: { imported: photoPages > 0 ? 'photo' : 'text', sortedBy } });
     } catch (e) {
       setError(
         e instanceof NoRecipeTextError
           ? "Couldn't find any ingredients in that. Include the ingredient list, ideally under an \"Ingredients\" heading."
           : 'Something went wrong reading that text. Try again, or add it by hand.',
       );
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -368,11 +374,12 @@ export default function ImportRecipeScreen() {
             ) : null}
             <RNView style={styles.row}>
               <Button
-                title="Sort into a recipe"
+                title={busy ? 'Sorting…' : 'Sort into a recipe'}
                 onPress={sortText}
-                disabled={!text.trim()}
-                style={!text.trim() ? { opacity: 0.5 } : undefined}
+                disabled={busy || !text.trim()}
+                style={busy || !text.trim() ? { opacity: 0.5 } : undefined}
               />
+              {busy ? <ActivityIndicator color={c.tint} /> : null}
             </RNView>
             <Text variant="muted">
               Tip: headings like Ingredients, Method and Notes help. Lines ending in a colon, such as &quot;For the sauce:&quot;,

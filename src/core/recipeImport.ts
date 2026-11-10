@@ -41,7 +41,7 @@ export interface ImportedRecipe {
   imageUrl?: string;
   sourceUrl: string;
   /** Which method found it, for troubleshooting. */
-  foundBy: 'json-ld' | 'recipe-card' | 'microdata' | 'headings' | 'pasted';
+  foundBy: 'json-ld' | 'recipe-card' | 'microdata' | 'headings' | 'pasted' | 'ai';
 }
 
 export class NoRecipeFoundError extends Error {

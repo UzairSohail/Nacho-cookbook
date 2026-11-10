@@ -9,6 +9,9 @@ const TIMEOUT_MS = 15_000;
 const MAX_REDIRECTS = 5;
 
 /** Recipe sites often refuse requests that don't look like a browser. */
+/** The Supabase Edge Function that reads pages for the web app and sorts text with AI. */
+export const IMPORT_FUNCTION = 'import-recipe';
+
 export const BROWSER_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36',

@@ -37,7 +37,7 @@ const hostOf = (url: string) => {
 
 /** Add a recipe (no id) or edit one (?id=...). */
 export default function EditRecipeScreen() {
-  const { id, imported } = useLocalSearchParams<{ id?: string; imported?: string }>();
+  const { id, imported, sortedBy } = useLocalSearchParams<{ id?: string; imported?: string; sortedBy?: string }>();
   const { state, dispatch } = useStore();
   const existing = useRecipeMap().get(id ?? '');
   const catalog = useCatalog();
@@ -140,6 +140,11 @@ export default function EditRecipeScreen() {
                 : 'Check the ingredients and steps. '}
               Pick US cups and spoons below if it's an American recipe. Nothing is saved until you press Save.
             </Text>
+            {pasted && sortedBy ? (
+              <Text variant="muted">
+                {sortedBy === 'ai' ? 'Sorted by AI (Gemini).' : 'Sorted by the app’s built-in rules (AI wasn’t available).'}
+              </Text>
+            ) : null}
           </Card>
         ) : null}
         <Field label="PHOTO">
