@@ -42,7 +42,6 @@ jobs:
         with:
           version: latest
 
-      # Only signed-in people can use the helper (Supabase checks their sign-in token).
       - name: Deploy to Supabase
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
