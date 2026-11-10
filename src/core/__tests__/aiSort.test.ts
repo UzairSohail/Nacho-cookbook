@@ -98,14 +98,18 @@ describe('import helper: sorting text', () => {
     SUPABASE_ANON_KEY: 'anon',
     GEMINI_API_KEY: 'gemini-key',
   };
-  const post = (body: unknown, auth?: string) =>
+  /** Like the app's calls, which always carry the project's publishable key. */
+  const post = (body: unknown, auth?: string, apikey = 'sb_publishable_app') =>
     new Request('https://project.supabase.co/functions/v1/import-recipe', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...(auth ? { authorization: auth } : {}) },
+      headers: { 'content-type': 'application/json', apikey, ...(auth ? { authorization: auth } : {}) },
       body: JSON.stringify(body),
     });
 
-  /** Supabase says only "Bearer user-token" is a signed-in person. */
+  /**
+   * Supabase says only "Bearer user-token" is a signed-in person, and (as in a
+   * project on the new keys) only accepts the publishable key, not the old anon key.
+   */
   const stubBackend = () => {
     vi.stubGlobal('Deno', { env: { get: (n: string) => env[n] } });
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -113,7 +117,9 @@ describe('import helper: sorting text', () => {
         return new Response(url.endsWith('/no-data') ? NO_DATA_PAGE : wprmBlog, { headers: { 'content-type': 'text/html' } });
       }
       if (url.endsWith('/auth/v1/user')) {
-        const auth = new Headers(init?.headers).get('authorization');
+        const headers = new Headers(init?.headers);
+        if (headers.get('apikey') !== 'sb_publishable_app') return new Response('{"message":"Invalid API key"}', { status: 401 });
+        const auth = headers.get('authorization');
         return auth === 'Bearer user-token' ? new Response(JSON.stringify({ id: 'u1' })) : new Response('{}', { status: 401 });
       }
       return geminiReply(answer);
@@ -129,6 +135,19 @@ describe('import helper: sorting text', () => {
     const { recipe } = await res.json();
     expect(recipe.title).toBe('Crispy chilli beef');
     expect(recipe.sourceUrl).toBe('https://x.test/');
+  });
+
+  it('checks sign-in with the key the app sent, not the old anon key', async () => {
+    stubBackend();
+    expect((await handleImport(post({ text: 'caption' }, 'Bearer user-token'))).status).toBe(200);
+    // Without the app's key, the old anon key is tried, and refused.
+    expect((await handleImport(post({ text: 'caption' }, 'Bearer user-token', ''))).status).toBe(401);
+  });
+
+  it('says why a website import was not sorted by AI', async () => {
+    stubBackend();
+    const { recipe } = await (await handleImport(post({ url: 'https://blog.test/recipe' }))).json();
+    expect(recipe.aiNote).toMatch(/signed in/);
   });
 
   it('turns away requests with only the public app key, without asking Gemini', async () => {
@@ -226,7 +245,7 @@ describe('sortRecipeText', () => {
   const text = 'Toast\n\nIngredients\n2 slices bread\n1 tbsp butter\n\nMethod\n1. Toast the bread.\n2. Butter it.';
 
   it('uses the AI recipe when there is one', async () => {
-    const ai = vi.fn(async () => recipeFromAnswer(JSON.stringify(answer)));
+    const ai = vi.fn(async () => ({ recipe: recipeFromAnswer(JSON.stringify(answer)) }));
     const { recipe, sortedBy } = await sortRecipeText(text, 'https://x.test/', ai);
     expect(sortedBy).toBe('ai');
     expect(recipe.title).toBe('Crispy chilli beef');
@@ -234,8 +253,9 @@ describe('sortRecipeText', () => {
   });
 
   it('falls back to the rules when the AI is unavailable (offline, signed out, demo mode)', async () => {
-    const { recipe, sortedBy } = await sortRecipeText(text, '', async () => null);
+    const { recipe, sortedBy } = await sortRecipeText(text, '', async () => ({ reason: 'you’re signed out.' }));
     expect(sortedBy).toBe('rules');
+    expect(recipe.aiNote).toBe('you’re signed out.');
     expect(recipe.ingredients[0].items).toEqual(['2 slices bread', '1 tbsp butter']);
     // Demo mode (no Supabase) goes straight to the rules.
     expect((await sortRecipeText(text)).sortedBy).toBe('rules');

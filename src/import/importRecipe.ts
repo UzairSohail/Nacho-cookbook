@@ -29,9 +29,9 @@ export async function importRecipe(input: string): Promise<ImportedRecipe> {
   // Tidied by AI through the import helper when signed in and it's available;
   // otherwise the page's own recipe data as the rules found it.
   const text = found ? recipeAsText(found) : pageText(page.html);
-  const ai = text.trim().length >= 40 ? await sortWithAi(text, page.url) : null;
-  if (ai) return withPageDetails(ai, found, page.url);
-  if (found) return found;
+  const ai = text.trim().length >= 40 ? await sortWithAi(text, page.url) : { reason: 'the page had too little text.' };
+  if ('recipe' in ai) return withPageDetails(ai.recipe, found, page.url);
+  if (found) return { ...found, aiNote: ai.reason };
   throw new ImportError(NO_RECIPE_MESSAGE, 'no-recipe');
 }
 
