@@ -8,11 +8,11 @@ import { Platform } from 'react-native';
 
 import { extractRecipe, NoRecipeFoundError, type ImportedRecipe } from '@/src/core/recipeImport';
 import { supabase } from '@/src/backend/supabase';
-import { checkUrl, fetchPage, ImportError, NO_RECIPE_MESSAGE } from './pageFetch';
+import { checkUrl, fetchPage, IMPORT_FUNCTION, ImportError, NO_RECIPE_MESSAGE } from './pageFetch';
 
 export { ImportError } from './pageFetch';
 
-export const IMPORT_FUNCTION = 'import-recipe';
+export { IMPORT_FUNCTION } from './pageFetch';
 
 export async function importRecipe(input: string): Promise<ImportedRecipe> {
   const url = checkUrl(input);
