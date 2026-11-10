@@ -13,6 +13,7 @@ import brownies from './captions/story-then-recipe.txt?raw';
 import salmon from './captions/unlabelled-parts.txt?raw';
 import burritoBowl from './captions/what-you-need-bowl.txt?raw';
 import naan from './captions/garlic-naan-storage.txt?raw';
+import smashBurger from './captions/method-only-smash-burger.txt?raw';
 
 /**
  * Real recipe captions, typed from screenshots of the app's paste box. They
@@ -278,5 +279,46 @@ describe('captions without the usual headings', () => {
       { steps: ['Simmer everything for 30 minutes, then shred the chicken.'] },
       { heading: 'To reheat', steps: ['Warm on the stove until hot.'] },
     ]);
+  });
+
+  it('reads a method-only caption: numbered steps in parts, ingredients from the amounts in the steps, no promo', () => {
+    const r = parse(smashBurger);
+    expect(r.title).toBe('Double Patty Chicken Smash Burger');
+    expect(r.instructions.map((g) => [g.heading, g.steps.length])).toEqual([
+      ['Chicken Smash Burger', 9],
+      ['Caramelized Onions', 4],
+      ['Burger Sauce', 3],
+      ['Assembly', 7],
+    ]);
+    expect(r.instructions[3].steps[2]).toBe('Add a generous layer of caramelized onions.');
+    expect(r.ingredients).toEqual([
+      {
+        heading: 'Chicken Smash Burger',
+        items: ['250 g finely minced boneless chicken', '1 tsp red chilli powder', '½ tsp black pepper powder', '1 tsp chicken masala', 'Salt, to taste', '1 Cheese Slice'],
+      },
+      { heading: 'Caramelized Onions', items: ['1 large onion', '1 tbsp butter', 'Pinch of salt', '½ tsp sugar'] },
+      {
+        heading: 'Burger Sauce',
+        items: ['4 tbsp mayonnaise', '1 tbsp mustard sauce', '2 tbsp ketchup', '½ tsp red chili powder', '½ tsp garlic powder', '½ tsp sugar', 'Salt, to taste'],
+      },
+    ]);
+    expect(JSON.stringify(r)).not.toMatch(/reel|Subscribe|#chicken/);
+    expect(JSON.stringify(r.ingredients)).not.toMatch(/portions|Assembly/);
+    const saved = draftToRecipe(draftFromImport(r, 2));
+    expect(saved.ingredients[0]).toMatchObject({ name: expect.stringMatching(/chicken/), quantity: 250, unit: 'g' });
+  });
+
+  it('keeps numbered steps as steps when a zero-width space hides in the number', () => {
+    const r = parse(smashBurger.replace('3. Add a generous', '3\u200B. Add a generous'));
+    expect(r.instructions[3].steps[2]).toBe('Add a generous layer of caramelized onions.');
+    expect(r.ingredients.flatMap((g) => g.items)).not.toContainEqual(expect.stringMatching(/generous/));
+  });
+
+  it('drops calls to action but keeps storage steps that start the same way', () => {
+    const r = parseRecipeText(
+      'Soup\n\nIngredients\n- 1 litre stock\n\nMethod\n1. Simmer the stock.\n2. Save the leftovers in a container in the fridge.\n\nSave this recipe for later!\nFollow @cook for more\nTurn on post notifications',
+    );
+    expect(steps(r)).toEqual(['Simmer the stock.', 'Save the leftovers in a container in the fridge.']);
+    expect(r.notes).toBeUndefined();
   });
 });

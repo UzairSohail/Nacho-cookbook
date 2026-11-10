@@ -90,6 +90,8 @@ const tidy = (t: string) =>
   t
     .replace(/[   ]/g, ' ')
     .replace(/[▢☐□✓✔◯○●]/g, '')
+    // Zero-width spaces and soft hyphens hide inside captions, as in "3\u200B. Add", and break the step numbers.
+    .replace(/[\u00AD\u200B\u200C\u2060\uFEFF]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -242,7 +244,7 @@ function partHeading(line: string, current: Section): { section: 'ingredients' |
     return undefined;
   }
   // "Sauce ingredients:", "For the chicken ingredients", "Chicken Method"
-  const before = new RegExp(String.raw`^(?:for\s+(?:the\s+)?)?([\p{L}'’& ]{2,40}?)\s+${word}\s*:?$`, 'iu').exec(l);
+  const before = new RegExp(String.raw`^(?:for\s+(?:the\s+)?)?([\p{L}'’& ]{2,40}?)\s*(?:\s|[-–—|:]\s*)${word}\s*:?$`, 'iu').exec(l);
   if (before && before[1].trim().split(/\s+/).length <= 4 && !STEP_VERB.test(before[1].trim()) && !/^(the|all|your|any|remaining|other)$/i.test(before[1].trim()) &&
     // Inside the steps, only with a colon: "then the wet ingredients" is part of a step.
     (current !== 'method' || /:$/.test(l))) {
@@ -282,6 +284,10 @@ function splitIngredientList(line: string): string[] {
   if (parts.length < 2 || !parts.every((p) => /^(\d|[½⅓⅔¼¾⅛⅜⅝⅞])/.test(p))) return [line];
   return parts;
 }
+
+/** "Save this reel for later", "Share this with a friend", "Subscribe @me for more recipes": never part of the recipe. */
+const CALL_TO_ACTION =
+  /^(save|share|send|tag|like|comment on)\s+(this|these|the (reel|post|video|recipe))\b(?!.*\b(fridge|freezer|container|jar|leftovers?)\b)|^(follow|subscribe)\b|^turn on (post )?notifications\b|\bfor more (easy|delicious|quick|simple|tasty|healthy|high[- ]protein|amazing|great|\s)*(recipes|ideas|content|videos)\b/i;
 
 const PROMO =
   /\b(subscribe|newsletter|instagram|facebook|pinterest|affiliate|cookbooks?|e-?books?|grab yours|link in (my )?bio|out now|use (my )?code|discount code|giveaway)\b|@[\w.]+/i;
@@ -472,6 +478,53 @@ function sortUnlabelledLines(rest: string[], intro: string[], ingredientLines: s
   return steps;
 }
 
+/** Where an ingredient's name ends inside a step: "1 tbsp butter | in a pan". */
+const NAME_END_WORDS = String.raw`(?:and|or|in|into|on|onto|over|to|with|until|till|for|then|at|from|if|as|so|while|before|after|together|each|evenly|well)`;
+const UNIT_WORD = String.raw`(?:g|grams?|kg|kilos?|mg|ml|millilitres?|milliliters?|l|litres?|liters?|cups?|tbsp|tablespoons?|tbs|tsp|teaspoons?|oz|ounces?|lbs?|pounds?|cloves?|slices?|pinch(?:es)?|handfuls?|cans?|tins?|sprigs?|bunch(?:es)?|sticks?|stalks?|heads?|pieces?|sheets?|scoops?|dash(?:es)?)`;
+const AMOUNT_WORD = String.raw`(?:\d+(?:[.,]\d+)?(?:\s*\/\s*\d+)?(?:\s+\d\/\d)?|[½⅓⅔¼¾⅛⅜⅝⅞]|\d+\s*[½⅓⅔¼¾⅛⅜⅝⅞])`;
+/** "250 g finely minced chicken", "½ tsp sugar", "1 large onion", "a pinch of salt" inside a step. */
+const AMOUNT_IN_STEP = new RegExp(String.raw`(?:^|[\s(])(${AMOUNT_WORD}\s*(?:-\s*${AMOUNT_WORD}\s*)?(?:${UNIT_WORD}\b\.?\s*(?:of\s+)?)?|a\s+(?:pinch|handful|dash)\s+of\s+)([\p{L}][\p{L}'’ -]*?)(?=\s+${NAME_END_WORDS}\b|\s*[,.;:!?)]|\s*$)`, 'giu');
+/** Counted things that aren't ingredients: "2 portions", "4-5 minutes", "2 sides". */
+const NOT_INGREDIENT = /^(portions?|pieces?|parts?|halves|minutes?|mins?|seconds?|secs?|hours?|hrs?|times?|sides?|batches|balls?|patt(y|ies)|layers?|degrees?|days?|weeks?|servings?|people|steps?|more|equal|of|inch(es)?|cm|mm|large portions?)\b/i;
+
+/**
+ * Ingredients read from the amounts in the steps, for captions that give only a
+ * method. "Salt to taste" counts too. Each part of the method gets its own
+ * section, and an ingredient named twice in a part is listed once.
+ */
+function ingredientsFromSteps(groups: ImportedStepGroup[]): ImportedIngredientGroup[] {
+  const out: ImportedIngredientGroup[] = [];
+  for (const g of groups) {
+    const items: string[] = [];
+    const seen = new Set<string>();
+    const add = (item: string, key: string) => {
+      const k = key.toLowerCase();
+      if (!seen.has(k)) {
+        seen.add(k);
+        items.push(item);
+      }
+    };
+    for (const step of g.steps) {
+      for (const m of step.matchAll(AMOUNT_IN_STEP)) {
+        const amount = m[1].trim();
+        const name = m[2].replace(/\s+(to taste)$/i, '').replace(/[\s-]+$/, '').trim();
+        if (!name || NOT_INGREDIENT.test(name) || name.split(/\s+/).length > 6) continue;
+        const hasUnit = new RegExp(String.raw`${UNIT_WORD}\b\.?\s*(of\s+)?$`, 'i').test(amount) || /^a\s/i.test(amount);
+        // A bare count needs a thing after it: "1 large onion", not "2 more".
+        if (!hasUnit && name.split(/\s+/).length > 4) continue;
+        const a = /^a\s+(\w+)/i.exec(amount);
+        add(a ? `${a[1][0].toUpperCase()}${a[1].slice(1)} of ${name}` : `${amount.replace(/\s+of$/i, '')} ${name}`.replace(/\s+/g, ' '), name);
+      }
+      for (const m of step.matchAll(/\b(salt(?: and (?:black )?pepper)?|(?:black )?pepper)\s+to taste\b/gi)) {
+        const name = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase();
+        add(`${name}, to taste`, m[1]);
+      }
+    }
+    if (items.length) out.push({ heading: g.heading, items });
+  }
+  return out;
+}
+
 /**
  * Turns pasted recipe text into a recipe for the editor. Throws
  * NoRecipeTextError if no ingredients can be found.
@@ -528,6 +581,7 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
       if (!url) url = urlMatch[1];
       continue;
     }
+    if (CALL_TO_ACTION.test(line)) continue;
     if (MACROS.test(line)) {
       // "(x3 servings)" in the macros is how many the recipe makes.
       const serves = /\bx\s*(\d+)\s*servings?\b|\b(?:makes|serves)\s*(\d+)\b|\b(\d+)\s*servings\b/i.exec(line);
@@ -601,6 +655,19 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
       ingredientLines.push(`${stripHeadingColon(line)}:`);
       continue;
     }
+    // "Burger sauce" over numbered steps: a part of the method, with no colon.
+    if (
+      section === 'method' &&
+      afterBlank &&
+      line.length <= 40 &&
+      line.split(/\s+/).length <= 5 &&
+      !/[.!?,;:]$/.test(line) &&
+      !NUMBERED_STEP.test(line) &&
+      NUMBERED_STEP.test(nextLine(index) ?? '')
+    ) {
+      methodLines.push(`${line}:`);
+      continue;
+    }
     if (section === 'intro' && pendingLabel) {
       const key = pendingLabel;
       pendingLabel = undefined;
@@ -654,7 +721,9 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
         }
         continue;
       }
-      const split = !title && !intro.length && !looksLikeTitle(line) ? titleBeforeEmoji(tidy(rawLines[index])) : undefined;
+      // "Smash Burger 🍔 made extra cheesy…": the emoji ends the name when a sentence carries on after it.
+      const emojiSplit = !title && !intro.length ? titleBeforeEmoji(tidy(rawLines[index])) : undefined;
+      const split = emojiSplit && (!looksLikeTitle(line) || /^\p{Ll}/u.test(emojiSplit[1])) ? emojiSplit : undefined;
       if (split) {
         title = split[0];
         intro.push(split[1][0].toUpperCase() + split[1].slice(1));
@@ -724,7 +793,10 @@ export function parseRecipeText(text: string, sourceUrl = ''): ImportedRecipe {
     instructions[instructions.length - 1].steps.push(lastStepGroup.heading);
   }
 
-  const groups = ingredients.filter((g) => g.items.length);
+  let groups = ingredients.filter((g) => g.items.length);
+  // Only steps, with the amounts written inside them ("Add 1 tsp chilli powder and salt to taste"):
+  // the ingredients come from the steps, one section per part of the method.
+  if (!groups.length) groups = ingredientsFromSteps(instructions);
   if (!groups.length) throw new NoRecipeTextError();
 
   let { prep, cook } = details;
