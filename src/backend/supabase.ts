@@ -10,7 +10,13 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 
 /** Where password reset emails send people to choose a new password. */
-export const WEB_APP_URL = 'https://nachocookbook.netlify.app';
+export const WEB_APP_URL = 'https://uzairsohail.github.io/Nacho-cookbook/';
+
+/**
+ * A path inside the web app. GitHub Pages serves it under /Nacho-cookbook
+ * (experiments.baseUrl in app.json), so files like the PowerSync worker need that prefix.
+ */
+export const webPath = (path: string) => `${process.env.EXPO_BASE_URL ?? ''}${path}`;
 
 /**
  * True when the web app was opened from a password reset email. Read before the

@@ -1,5 +1,5 @@
 /**
- * Fetching a recipe page safely, shared by the app and the Netlify function.
+ * Fetching a recipe page safely, shared by the app and the web import helper (Supabase Edge Function).
  * Only public http(s) addresses, a size limit and a time limit, so the web
  * app's helper can't be used to reach private networks or download huge files.
  */

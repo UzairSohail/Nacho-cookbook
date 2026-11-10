@@ -1,16 +1,18 @@
 /**
  * Importing a recipe from a web address. The Android app fetches the page
  * itself. Browsers block reading other sites' pages (CORS), so the web app
- * asks its Netlify function to fetch the page and find the recipe.
+ * asks the "import-recipe" Supabase Edge Function (src/import/importHandler.ts)
+ * to fetch the page and find the recipe.
  */
 import { Platform } from 'react-native';
 
 import { extractRecipe, NoRecipeFoundError, type ImportedRecipe } from '@/src/core/recipeImport';
+import { supabase } from '@/src/backend/supabase';
 import { checkUrl, fetchPage, ImportError, NO_RECIPE_MESSAGE } from './pageFetch';
 
 export { ImportError } from './pageFetch';
 
-export const IMPORT_FUNCTION_PATH = '/.netlify/functions/import-recipe';
+export const IMPORT_FUNCTION = 'import-recipe';
 
 export async function importRecipe(input: string): Promise<ImportedRecipe> {
   const url = checkUrl(input);
@@ -24,16 +26,16 @@ export async function importRecipe(input: string): Promise<ImportedRecipe> {
   }
 }
 
+type FunctionBody = { recipe?: ImportedRecipe; error?: string; code?: ImportError['code'] } | null;
+
 async function viaFunction(url: string): Promise<ImportedRecipe> {
-  let res: Response;
-  try {
-    res = await fetch(`${IMPORT_FUNCTION_PATH}?url=${encodeURIComponent(url)}`);
-  } catch {
-    throw new ImportError("Couldn't reach the import service. Check your connection.", 'unreachable');
-  }
-  const body = (await res.json().catch(() => null)) as { recipe?: ImportedRecipe; error?: string; code?: ImportError['code'] } | null;
-  if (res.ok && body?.recipe) return body.recipe;
+  // Demo mode (no Supabase settings) has no helper to ask.
+  if (!supabase) throw new ImportError('Recipe import is not available here. It works when signed in, and on Android.', 'unreachable');
+  const { data, error } = await supabase.functions.invoke<FunctionBody>(IMPORT_FUNCTION, { body: { url } });
+  if (data?.recipe) return data.recipe;
+  // A helper answer with a message (no recipe, blocked site...) comes back as an error with the response attached.
+  const response = (error as { context?: unknown } | null)?.context;
+  const body = response instanceof Response ? ((await response.json().catch(() => null)) as FunctionBody) : null;
   if (body?.error) throw new ImportError(body.error, body.code ?? 'unreachable');
-  // Running with `expo start` has no Netlify function behind it.
-  throw new ImportError('Recipe import is not available here. It works on the hosted web app and on Android.', 'unreachable');
+  throw new ImportError("Couldn't reach the import service. Check your connection.", 'unreachable');
 }

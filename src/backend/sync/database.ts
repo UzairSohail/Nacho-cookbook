@@ -8,6 +8,7 @@ import '@azure/core-asynciterator-polyfill';
 import type { CommonPowerSyncDatabase } from '@powersync/common';
 import { Platform } from 'react-native';
 
+import { webPath } from '../supabase';
 import { powerSyncUrl } from './connector';
 import { AppSchema } from './schema';
 
@@ -24,8 +25,8 @@ function open(): CommonPowerSyncDatabase {
   const { PowerSyncDatabase: WebDatabase } = require('@powersync/web') as typeof import('@powersync/web');
   return new WebDatabase({
     schema: AppSchema,
-    database: { dbFilename: DB_FILE, worker: '/@powersync/worker.js' },
-    sync: { worker: '/@powersync/worker.js' },
+    database: { dbFilename: DB_FILE, worker: webPath('/@powersync/worker.js') },
+    sync: { worker: webPath('/@powersync/worker.js') },
   });
 }
 
