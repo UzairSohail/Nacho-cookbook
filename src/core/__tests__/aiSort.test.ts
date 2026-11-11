@@ -280,3 +280,33 @@ describe('functionError', () => {
     expect(await functionError(new Error('offline'))).toEqual({});
   });
 });
+
+describe('Gemini speed settings', () => {
+  it('turns thinking off, and asks again without the setting if the model refuses it', async () => {
+    expect(geminiRequest('x').generationConfig).toMatchObject({ thinkingConfig: { thinkingBudget: 0 } });
+    const bodies: Record<string, unknown>[] = [];
+    const fetchImpl = vi.fn(async (_u: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      bodies.push(body);
+      return body.generationConfig.thinkingConfig
+        ? new Response('{"error":{"message":"Thinking budget is not supported for this model."}}', { status: 400 })
+        : geminiReply(answer);
+    }) as unknown as typeof fetch;
+    const r = await sortWithGemini('caption', '', { apiKey: 'k', fetchImpl });
+    expect(r.title).toBe('Crispy chilli beef');
+    expect(bodies).toHaveLength(2);
+  });
+
+  it('reports a timeout plainly', async () => {
+    const slow = vi.fn(async () => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    }) as unknown as typeof fetch;
+    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: slow })).rejects.toThrow('Gemini took too long to answer.');
+  });
+
+  it('does not retry other bad requests', async () => {
+    const bad = vi.fn(async () => new Response('{"error":{"message":"API key not valid"}}', { status: 400 })) as unknown as typeof fetch;
+    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: bad })).rejects.toThrow(/API key not valid/);
+    expect(bad).toHaveBeenCalledTimes(1);
+  });
+});

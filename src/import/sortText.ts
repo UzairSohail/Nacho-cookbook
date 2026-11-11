@@ -14,8 +14,8 @@ import { functionError, IMPORT_FUNCTION } from './pageFetch';
 
 export type SortedBy = 'ai' | 'rules';
 
-/** How long to wait for the AI before using the rules. */
-const AI_TIMEOUT_MS = 30_000;
+/** How long to wait for the AI before using the rules (the helper gives Gemini up to 55 seconds). */
+const AI_TIMEOUT_MS = 70_000;
 
 /** The recipe from the AI, or why it isn't available. Never throws. */
 export async function sortWithAi(text: string, sourceUrl: string): Promise<{ recipe: ImportedRecipe } | { reason: string }> {

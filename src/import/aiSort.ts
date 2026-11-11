@@ -76,8 +76,16 @@ export const RESPONSE_SCHEMA = {
   propertyOrdering: ['title', 'description', 'servings', 'prepMinutes', 'cookMinutes', 'ingredientGroups', 'methodGroups', 'notes'],
 };
 
-/** The body of a Gemini generateContent request for this text. */
-export function geminiRequest(text: string) {
+/** How long the helper waits for Gemini. Supabase lets a function run for 150 seconds. */
+export const GEMINI_TIMEOUT_MS = 55_000;
+
+/**
+ * The body of a Gemini generateContent request for this text. Sorting needs
+ * little reasoning, so thinking is turned off (thinkingBudget 0), which makes
+ * Flash answer in seconds instead of timing out. `thinking: false` leaves the
+ * setting out, for models that refuse it.
+ */
+export function geminiRequest(text: string, { thinking = true }: { thinking?: boolean } = {}) {
   return {
     systemInstruction: { parts: [{ text: INSTRUCTIONS }] },
     contents: [{ role: 'user', parts: [{ text: `Recipe text:\n\n${text}` }] }],
@@ -85,6 +93,7 @@ export function geminiRequest(text: string) {
       temperature: 0,
       responseMimeType: 'application/json',
       responseSchema: RESPONSE_SCHEMA,
+      ...(thinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
     },
   };
 }
@@ -144,16 +153,26 @@ export async function sortWithGemini(
   const { apiKey, model = DEFAULT_GEMINI_MODEL, fetchImpl = fetch } = options;
   if (!apiKey) throw new AiSortError('AI sorting is not set up yet.', 'not-configured');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  let response: Response;
-  try {
-    response = await fetchImpl(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(geminiRequest(text.slice(0, MAX_TEXT_LENGTH))),
-      signal: AbortSignal.timeout(25_000),
-    });
-  } catch (e) {
-    throw new AiSortError(`Couldn't reach Gemini: ${e instanceof Error ? e.message : e}`, 'failed');
+  const started = Date.now();
+  const ask = async (thinking: boolean) => {
+    try {
+      return await fetchImpl(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify(geminiRequest(text.slice(0, MAX_TEXT_LENGTH), { thinking })),
+        signal: AbortSignal.timeout(Math.max(5_000, GEMINI_TIMEOUT_MS - (Date.now() - started))),
+      });
+    } catch (e) {
+      const timedOut = e instanceof Error && (e.name === 'TimeoutError' || /timed? ?out/i.test(e.message));
+      throw new AiSortError(timedOut ? 'Gemini took too long to answer.' : `Couldn't reach Gemini: ${e instanceof Error ? e.message : e}`, 'failed');
+    }
+  };
+  let response = await ask(true);
+  // A model that won't take the thinking setting says so with a 400: ask again without it.
+  if (response.status === 400) {
+    const detail = await response.text().catch(() => '');
+    if (/thinking/i.test(detail)) response = await ask(false);
+    else throw new AiSortError(`Gemini answered 400: ${detail.slice(0, 300)}`, 'failed');
   }
   if (response.status === 429) throw new AiSortError('The free Gemini allowance is used up for now.', 'busy');
   if (!response.ok) {
