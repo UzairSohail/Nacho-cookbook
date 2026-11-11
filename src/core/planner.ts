@@ -125,3 +125,67 @@ export function entryRoles(batches: Batch[]): Map<string, EntryRole> {
   }
   return roles;
 }
+
+// ---- recipe list per period ---------------------------------------------
+
+/** How long a planning period is: one week or a fortnight, starting Monday. */
+export type PlanPeriod = 7 | 14;
+
+/** The period of `length` days starting on the Monday on or before `iso`. */
+export function periodRange(iso: string, length: PlanPeriod): DateRange {
+  const start = mondayOf(iso);
+  return { start, end: addDays(start, length - 1) };
+}
+
+/** A recipe on the period's list, with every serving planned for it added up. */
+export interface PlannedRecipe {
+  recipeId: string;
+  servings: number;
+  /** The plan rows behind it (older plans can have several per recipe). */
+  entryIds: string[];
+}
+
+/** The recipes planned in `range`, in the order they were first added (earliest row first). */
+export function plannedRecipes(entries: PlanEntry[], range: DateRange): PlannedRecipe[] {
+  const byRecipe = new Map<string, PlannedRecipe>();
+  const sorted = entries
+    .filter((e) => e.recipeId && inRange(e.date, range))
+    .sort((a, b) => a.date.localeCompare(b.date) || SLOT_ORDER[a.slot] - SLOT_ORDER[b.slot]);
+  for (const e of sorted) {
+    const found = byRecipe.get(e.recipeId!);
+    if (found) {
+      found.servings += e.servings;
+      found.entryIds.push(e.id);
+    } else {
+      byRecipe.set(e.recipeId!, { recipeId: e.recipeId!, servings: e.servings, entryIds: [e.id] });
+    }
+  }
+  return [...byRecipe.values()];
+}
+
+/**
+ * The day and meal to store a newly listed recipe under. The planner no longer
+ * shows days or meals, but each plan row still has one, and a household can
+ * only have one row per day and meal. Taking the next free one keeps the
+ * recipes in the order they were added.
+ */
+export function freePlanSlot(
+  entries: PlanEntry[],
+  range: DateRange,
+): { date: string; slot: PlanEntry['slot'] } | null {
+  const taken = new Set(entries.filter((e) => inRange(e.date, range)).map((e) => `${e.date}|${e.slot}`));
+  const length = daysBetween(range.start, range.end) + 1;
+  const slots = Object.keys(SLOT_ORDER) as PlanEntry['slot'][];
+  // Fill in order day by day after the last used one, so new recipes sort last.
+  const keys: Array<{ date: string; slot: PlanEntry['slot'] }> = [];
+  for (let d = 0; d < length; d++) for (const slot of slots) keys.push({ date: addDays(range.start, d), slot });
+  let last = -1;
+  keys.forEach((k, i) => {
+    if (taken.has(`${k.date}|${k.slot}`)) last = i;
+  });
+  for (let i = 1; i <= keys.length; i++) {
+    const k = keys[(last + i) % keys.length];
+    if (!taken.has(`${k.date}|${k.slot}`)) return k;
+  }
+  return null;
+}

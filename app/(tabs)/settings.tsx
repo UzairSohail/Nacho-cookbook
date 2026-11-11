@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Button, Card, Chip, Stepper, Text, TextInput, useTheme } from '@/components/Themed';
 import { useAuth } from '@/src/backend/auth';
 import type { MeasureStandard, UnitSystem } from '@/src/core';
+import { setPlanPeriod, usePlanPeriod } from '@/src/state/planPeriod';
 import { useStore, type SyncInfo } from '@/src/state/store';
 
 function Choice<T extends string>({
@@ -72,13 +73,15 @@ export default function SettingsScreen() {
 
       <Card style={styles.gap}>
         <Text variant="label">HOUSEHOLD SIZE</Text>
-        <Text variant="muted">New meals in the planner default to this many servings.</Text>
+        <Text variant="muted">Recipes added in the planner default to this many servings.</Text>
         <Stepper
           value={settings.householdSize}
           label="people"
           onChange={(v) => dispatch({ type: 'settings', patch: { householdSize: v } })}
         />
       </Card>
+
+      <PlanPeriodCard />
 
       <Card style={styles.gap}>
         <Text variant="label">UNITS</Text>
@@ -133,3 +136,18 @@ const styles = StyleSheet.create({
   staple: { flexDirection: 'row', gap: 12, alignItems: 'center', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   check: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
 });
+
+function PlanPeriodCard() {
+  const period = usePlanPeriod();
+  return (
+    <Card style={styles.gap}>
+      <Text variant="label">PLAN AND SHOP FOR</Text>
+      <Text variant="muted">How long the planner and shopping list cover, starting on a Monday. Saved on this device.</Text>
+      <Choice<'7' | '14'>
+        options={[['7', 'A week'], ['14', 'A fortnight']]}
+        value={String(period) as '7' | '14'}
+        onChange={(v) => setPlanPeriod(Number(v) as 7 | 14)}
+      />
+    </Card>
+  );
+}
