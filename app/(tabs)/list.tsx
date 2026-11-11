@@ -1,18 +1,27 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, View as RNView } from 'react-native';
 
+import { PriceLine, PricePanel, PriceSummary } from '@/components/ShoppingPrices';
 import { Button, Card, Chip, Text, TextInput, useTheme } from '@/components/Themed';
 import {
   addDays,
   AISLE_LABELS,
+  costLine,
+  needFor,
+  totalsFor,
   AISLE_ORDER,
   formatAmount,
   listToText,
   parseQuantity,
   periodRange,
   today,
+  type Ingredient,
+  type LineCost,
   type ListItem,
+  type MeasureStandard,
+  type PriceData,
 } from '@/src/core';
+import { usePriceData } from '@/src/prices/priceData';
 import { periodName, usePlanPeriod } from '@/src/state/planPeriod';
 import { useStore } from '@/src/state/store';
 
@@ -28,6 +37,8 @@ export default function ShoppingListScreen() {
   const [newItem, setNewItem] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [priceOpenId, setPriceOpenId] = useState<string | null>(null);
+  const prices = usePriceData();
 
   const current = periodRange(today(), period);
   const range = choice === 'this' ? current : periodRange(addDays(current.start, period), period);
@@ -69,6 +80,25 @@ export default function ShoppingListScreen() {
   // Generated lines are keyed "<ingredient id>|<kind>", so staples can be flagged without storing anything extra.
   const staples = new Set(state.pantry);
   const isStaple = (item: ListItem) => !!item.key && staples.has(item.key.split('|')[0]);
+
+  // Each line's ingredient (for its price pick and density): by id for generated lines, by name for hand-added ones.
+  const ingredientOf = useMemo(() => {
+    const byId = new Map(state.ingredients.map((i) => [i.id, i]));
+    const byName = new Map(state.ingredients.map((i) => [i.name.trim().toLowerCase(), i]));
+    return (item: ListItem): Ingredient | undefined =>
+      item.key ? byId.get(item.key.split('|')[0]) : byName.get(item.name.trim().toLowerCase());
+  }, [state.ingredients]);
+
+  const costs = useMemo(() => {
+    const m = new Map<string, LineCost>();
+    for (const item of state.list) {
+      const ing = ingredientOf(item);
+      m.set(item.id, lineCostFor(item, ing, prices.data, standard));
+    }
+    return m;
+  }, [state.list, ingredientOf, prices.data, standard]);
+  const totals = totalsFor(state.list.filter((i) => !isStaple(i)).map((i) => costs.get(i.id)!));
+  const stapleCount = state.list.filter(isStaple).length;
 
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.content}>
@@ -124,6 +154,10 @@ export default function ShoppingListScreen() {
         </RNView>
       ) : null}
 
+      {state.list.length ? (
+        <PriceSummary totals={totals} status={prices.status} updated={prices.data?.updated ?? null} staples={stapleCount} />
+      ) : null}
+
       {aisles.map((aisle) => {
         const items = inAisle(aisle);
         const left = items.filter((i) => !i.checked).length;
@@ -144,6 +178,12 @@ export default function ShoppingListScreen() {
                   amount={amount(item.quantity, item.unit)}
                   editing={editingId === item.id}
                   onEdit={() => setEditingId(editingId === item.id ? null : item.id)}
+                  cost={costs.get(item.id)!}
+                  ingredient={ingredientOf(item)}
+                  standard={standard}
+                  data={prices.data}
+                  priceOpen={priceOpenId === item.id}
+                  onTogglePrice={() => setPriceOpenId(priceOpenId === item.id ? null : item.id)}
                 />
               ))}
             </Card>
@@ -167,18 +207,38 @@ export default function ShoppingListScreen() {
   );
 }
 
+function lineCostFor(item: ListItem, ing: Ingredient | undefined, data: PriceData | null, standard: MeasureStandard) {
+  const density = ing?.density ?? null;
+  return costLine(item.name, needFor(item.quantity, item.unit, { standard, density }), data, ing?.pricePick, {
+    produce: item.aisle === 'produce',
+    density,
+  });
+}
+
 function Row({
   item,
   staple,
   amount,
   editing,
   onEdit,
+  cost,
+  ingredient,
+  standard,
+  data,
+  priceOpen,
+  onTogglePrice,
 }: {
   item: ListItem;
   staple: boolean;
   amount: string;
   editing: boolean;
   onEdit: () => void;
+  cost: LineCost;
+  ingredient: Ingredient | undefined;
+  standard: MeasureStandard;
+  data: PriceData | null;
+  priceOpen: boolean;
+  onTogglePrice: () => void;
 }) {
   const { dispatch } = useStore();
   const c = useTheme();
@@ -207,6 +267,30 @@ function Row({
           {item.sources.length ? <Text variant="muted">{item.sources.join(', ')}</Text> : null}
         </Pressable>
       </RNView>
+      {cost.woolies || cost.coles || priceOpen ? (
+        <RNView style={styles.priceIndent}>
+          <PriceLine
+            cost={cost}
+            open={priceOpen}
+            onToggle={onTogglePrice}
+            onPickStore={(store) => dispatch({ type: 'pickStore', id: item.id, store })}
+          />
+        </RNView>
+      ) : null}
+      {priceOpen ? (
+        <PricePanel
+          name={item.name}
+          need={needFor(item.quantity, item.unit, { standard, density: ingredient?.density })}
+          density={ingredient?.density}
+          produce={item.aisle === 'produce'}
+          cost={cost}
+          data={data}
+          hasPick={!!ingredient?.pricePick}
+          onPickProduct={(store, product) => dispatch({ type: 'pickProduct', id: item.id, store, product })}
+          onPickStore={(store) => dispatch({ type: 'pickStore', id: item.id, store })}
+          onReset={() => dispatch({ type: 'clearPricePick', id: item.id })}
+        />
+      ) : null}
       {editing ? (
         <RNView style={styles.gap}>
           <RNView style={styles.row}>
@@ -259,5 +343,6 @@ const styles = StyleSheet.create({
   aisleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 },
   progress: { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: 6, borderRadius: 3 },
+  priceIndent: { paddingLeft: 40 },
   check: { width: 28, height: 28, borderRadius: 8, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
 });
