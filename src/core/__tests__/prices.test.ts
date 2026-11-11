@@ -210,6 +210,20 @@ describe('costing a line', () => {
     expect(t.missing).toEqual({ woolies: 1, coles: 0 });
     expect(t.unpriced).toBe(1);
     expect(t.priced).toBe(2);
+    expect(t.cheapest).toBeCloseTo(4.9);
+  });
+
+  it('works out what the cheapest mix saves over each store', () => {
+    const lines = [
+      costLine('Plain flour', needFor(300, 'g'), data, null), // W 1.30, C 2.40
+      costLine('Brown onion', needFor(2, null), data, null, { produce: true }), // W 1.26, C 1.68
+      costLine('Beef mince', needFor(500, 'g'), data, { store: 'coles' }), // W 7.70, C 7.70, sent to Coles
+      costLine('Lemon', needFor(2, null), data, null, { produce: true }), // Coles only: not a saving
+    ];
+    const t = totalsFor(lines);
+    expect(t.cheapest).toBeCloseTo(1.3 + 1.26 + 7.7 + 3.6);
+    expect(t.savings.woolies).toBeCloseTo(0);
+    expect(t.savings.coles).toBeCloseTo(1.1 + 0.42);
   });
 });
 

@@ -68,6 +68,8 @@ export type Action =
   | { type: 'pickProduct'; id: string; store: StoreId; product: Product }
   /** Shopping list prices: buy it at this store, or null for whichever is cheaper. */
   | { type: 'pickStore'; id: string; store: StoreId | null }
+  /** Shopping list prices: buy every line at whichever store is cheaper for it (keeps picked products). */
+  | { type: 'useCheapestStores' }
   /** Shopping list prices: forget the picks and go back to the automatic suggestion. */
   | { type: 'clearPricePick'; id: string }
   | { type: 'deleteItem'; id: string }
@@ -172,6 +174,22 @@ export function reducer(state: State, action: Action): State {
         else delete next.store;
         return next;
       });
+    case 'useCheapestStores': {
+      // Only lines someone sent to a particular store change; the rest already follow the cheaper store.
+      let next = state;
+      for (const item of state.list) {
+        const ing = item.key
+          ? next.ingredients.find((i) => i.id === item.key!.split('|')[0])
+          : ingredientByName(next, item.name);
+        if (!ing?.pricePick?.store) continue;
+        next = withPricePick(next, item.id, (pick) => {
+          const rest = { ...pick };
+          delete rest.store;
+          return rest;
+        });
+      }
+      return next;
+    }
     case 'clearPricePick':
       return withPricePick(state, action.id, () => null);
     case 'deleteItem': {

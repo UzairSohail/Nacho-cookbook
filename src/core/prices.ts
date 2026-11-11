@@ -393,10 +393,20 @@ export interface ListTotals {
   /** Lines with no price anywhere. */
   unpriced: number;
   priced: number;
+  /** Every line at whichever store is cheaper for it. */
+  cheapest: number;
+  /**
+   * What the cheapest mix saves over buying everything at one store, counting
+   * only lines both stores have (so a missing item doesn't look like a saving).
+   */
+  savings: Record<StoreId, number>;
 }
 
 export function totalsFor(lines: LineCost[]): ListTotals {
-  const t: ListTotals = { chosen: 0, woolies: 0, coles: 0, missing: { woolies: 0, coles: 0 }, unpriced: 0, priced: 0 };
+  const t: ListTotals = {
+    chosen: 0, woolies: 0, coles: 0, missing: { woolies: 0, coles: 0 }, unpriced: 0, priced: 0,
+    cheapest: 0, savings: { woolies: 0, coles: 0 },
+  };
   for (const l of lines) {
     if (!l.chosen) {
       t.unpriced += 1;
@@ -408,6 +418,14 @@ export function totalsFor(lines: LineCost[]): ListTotals {
       const c = l[s];
       if (c) t[s] += c.cost;
       else t.missing[s] += 1;
+    }
+    const w = l.woolies?.cost;
+    const c = l.coles?.cost;
+    const low = Math.min(w ?? Infinity, c ?? Infinity);
+    t.cheapest += low;
+    if (w != null && c != null) {
+      t.savings.woolies += w - low;
+      t.savings.coles += c - low;
     }
   }
   return t;

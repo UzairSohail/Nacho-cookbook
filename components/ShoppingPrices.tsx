@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View as RNView } from 'react-native';
 
-import { Card, Chip, Text, TextInput, useTheme } from '@/components/Themed';
+import { Button, Card, Chip, Text, TextInput, useTheme } from '@/components/Themed';
 import { Fonts } from '@/constants/Colors';
 import {
   costAt,
@@ -34,8 +34,11 @@ export function PriceSummary({
   status,
   updated,
   staples,
+  onUseCheapest,
 }: {
   totals: ListTotals;
+  /** Buy every item at whichever store is cheaper for it. */
+  onUseCheapest: () => void;
   status: PriceStatus;
   updated: string | null;
   /** Pantry staples on the list, which aren't counted. */
@@ -104,12 +107,49 @@ export function PriceSummary({
           </RNView>
         ))}
       </RNView>
+      <CheapestMix totals={totals} onUse={onUseCheapest} />
       {notes.length ? <Text variant="muted">{notes.join(' ')}</Text> : null}
       <Text variant="muted" style={{ fontSize: 12 }}>
         Online prices from hotprices.org{updated ? `, ${dateText(updated)}` : ''}. Your store may differ. Costs count
         whole packs.
       </Text>
     </Card>
+  );
+}
+
+/** The cheapest store for every item, what that saves, and a button to switch to it. */
+function CheapestMix({ totals, onUse }: { totals: ListTotals; onUse: () => void }) {
+  const c = useTheme();
+  const onIt = totals.chosen <= totals.cheapest + 0.005;
+  const saves = STORES.filter((s) => totals.savings[s] >= 0.005);
+  return (
+    <RNView style={[styles.mix, { borderColor: c.accent }]}>
+      <RNView style={styles.totalRow}>
+        <Text variant="label" style={{ color: c.accent }}>
+          CHEAPEST OVERALL
+        </Text>
+        <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 18 }}>{money(totals.cheapest)}</Text>
+      </RNView>
+      <Text variant="muted">
+        {saves.length
+          ? `Saves ${saves
+              .map((s) => `${money(totals.savings[s])} compared with all at ${STORE_SHORT[s]}`)
+              .join(', and ')}.`
+          : 'One store is cheapest for everything, so splitting the shop saves nothing.'}
+      </Text>
+      {onIt ? (
+        <Text style={{ color: c.accent, fontFamily: Fonts.bodyBold }} accessibilityLiveRegion="polite">
+          ✓ Your list is on the cheapest mix
+        </Text>
+      ) : (
+        <>
+          <Button title={`Use cheapest (save ${money(totals.chosen - totals.cheapest)})`} onPress={onUse} />
+          <Text variant="muted" style={{ fontSize: 12 }}>
+            Keeps the products you picked; only the store changes.
+          </Text>
+        </>
+      )}
+    </RNView>
   );
 }
 
@@ -316,6 +356,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
   totalRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' },
   storeTotals: { flexDirection: 'row', gap: 8 },
+  mix: { borderWidth: 1.5, borderRadius: 12, padding: 12, gap: 8 },
   storeTotal: { flex: 1, minWidth: 0, borderWidth: 1.5, borderRadius: 12, padding: 10, gap: 2 },
   priceLine: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 },
   pricePill: { borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 10, minHeight: 30, justifyContent: 'center' },
