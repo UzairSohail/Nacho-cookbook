@@ -155,7 +155,9 @@ export default function ShoppingListScreen() {
       ) : null}
 
       {state.list.length ? (
-        <PriceSummary totals={totals} status={prices.status} updated={prices.data?.updated ?? null} staples={stapleCount} />
+        <PriceSummary totals={totals} status={prices.status} updated={prices.data?.updated ?? null} staples={stapleCount}
+          onUseCheapest={() => dispatch({ type: 'useCheapestStores' })}
+        />
       ) : null}
 
       {aisles.map((aisle) => {

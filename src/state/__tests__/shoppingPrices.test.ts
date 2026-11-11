@@ -49,6 +49,18 @@ describe('shopping list price picks', () => {
     ]);
   });
 
+  it('sends every line back to its cheaper store, keeping picked products', () => {
+    let state = planned();
+    const [a, b] = state.list;
+    state = reducer(state, { type: 'pickProduct', id: a.id, store: 'coles', product: flour });
+    state = reducer(state, { type: 'pickStore', id: b.id, store: 'woolies' });
+    state = reducer(state, { type: 'useCheapestStores' });
+    const ingOf = (key: string) => state.ingredients.find((i) => i.id === key.split('|')[0])!;
+    expect(ingOf(a.key!).pricePick).toEqual({ coles: flour });
+    expect(ingOf(b.key!).pricePick).toBeNull();
+    expect(reducer(state, { type: 'useCheapestStores' })).toBe(state);
+  });
+
   it('turns a hand-added line into an ingredient so the pick is remembered', () => {
     let state = reducer(planned(), { type: 'addItem', name: 'Tim Tams' });
     const item = state.list.find((i) => i.name === 'Tim Tams')!;
