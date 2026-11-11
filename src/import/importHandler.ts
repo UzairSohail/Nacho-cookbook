@@ -103,7 +103,9 @@ export async function handleImport(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'GET' && req.method !== 'POST') return json({ error: 'Use POST.', code: 'bad-url' }, 405);
   if (req.method === 'GET' && new URL(req.url).searchParams.get('check') === 'gemini') {
-    return json(await checkGemini({ apiKey: env('GEMINI_API_KEY'), model: env('GEMINI_MODEL') }));
+    const asked = new URL(req.url).searchParams.get('model');
+    const model = asked && /^gemini-[\w.-]{1,60}$/.test(asked) ? asked : env('GEMINI_MODEL');
+    return json(await checkGemini({ apiKey: env('GEMINI_API_KEY'), model }));
   }
   const body: RequestBody = req.method === 'POST' ? ((await req.json().catch(() => null)) as RequestBody) : null;
   if (typeof body?.text === 'string') return sortText(req, { text: body.text, sourceUrl: body.sourceUrl });
