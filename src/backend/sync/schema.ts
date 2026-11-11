@@ -26,6 +26,7 @@ const ingredients = new Table(
     name: column.text,
     aisle: column.text,
     density: column.real,
+    price_pick: column.text,
   },
   { indexes: { household: ['household_id'] } },
 );

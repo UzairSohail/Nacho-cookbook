@@ -1,6 +1,8 @@
 # Publishes the web app to GitHub Pages: https://uzairsohail.github.io/Nacho-cookbook/
-# Runs on every merge to master that touches the app, and from
-# Actions > Publish web app > Run workflow. One-time setup: Settings > Pages >
+# Runs on every merge to master that touches the app, once a day to refresh
+# the Woolworths / Coles price list (prices/prices.json, read by the shopping
+# list on web and Android), and from Actions > Publish web app > Run workflow.
+# One-time setup: Settings > Pages >
 # Build and deployment > Source: GitHub Actions.
 name: Publish web app
 
@@ -15,6 +17,9 @@ on:
       - "**.md"
       - ".github/workflows/android-apk.yml"
       - ".github/workflows/import-function.yml"
+  schedule:
+    # hotprices.org publishes about 10–11am Sydney time; this picks it up after lunch.
+    - cron: "30 2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -46,6 +51,10 @@ jobs:
       # such as /Nacho-cookbook/recipe/abc load the app from 404.html instead.
       # .nojekyll keeps the _expo folder from being dropped.
       - run: cp dist/index.html dist/404.html && touch dist/.nojekyll
+
+      # Today's Woolworths and Coles prices from hotprices.org. If that's down,
+      # the copy already published is kept.
+      - run: node scripts/build-prices.mjs dist/prices
 
       - uses: actions/upload-pages-artifact@v3
         with:

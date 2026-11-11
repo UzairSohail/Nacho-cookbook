@@ -6,3 +6,4 @@ export * from './types';
 export * from './units';
 export * from './ids';
 export * from './ingredientLine';
+export * from './prices';

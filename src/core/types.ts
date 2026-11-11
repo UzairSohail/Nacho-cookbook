@@ -1,4 +1,5 @@
 /** Shared data types. These mirror the database tables in supabase/schema.sql. */
+import type { PricePick } from './prices';
 import type { MeasureStandard } from './units';
 
 export type Aisle =
@@ -40,6 +41,11 @@ export interface Ingredient {
   aisle: Aisle;
   /** Grams per millilitre, for volume <-> weight conversion. Null if unknown. */
   density?: number | null;
+  /**
+   * The Woolworths / Coles products and store chosen for it on the shopping
+   * list. Undefined when never chosen; null once cleared.
+   */
+  pricePick?: PricePick | null;
 }
 
 export interface RecipeIngredient {

@@ -52,7 +52,8 @@ function parseArray(v: unknown): unknown[] {
  * block everything queued behind them.
  */
 export function isPermanentError(code: unknown): boolean {
-  return typeof code === 'string' && (/^22...$/.test(code) || /^23...$/.test(code) || code === '42501');
+  // PGRST204: a column the server doesn't have yet (a migration not run). Retrying won't add it.
+  return typeof code === 'string' && (/^22...$/.test(code) || /^23...$/.test(code) || code === '42501' || code === 'PGRST204');
 }
 
 /** PowerSync reports a refused sign-in token as an HTTP 401 / PSYNC_S21xx error. */

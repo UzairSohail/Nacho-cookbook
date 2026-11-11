@@ -15,6 +15,9 @@ import {
   type DateRange,
   type Ingredient,
   type ListItem,
+  type PricePick,
+  type Product,
+  type StoreId,
   type MealSlot,
   type MeasureStandard,
   type PlanEntry,
@@ -61,6 +64,12 @@ export type Action =
   | { type: 'editItem'; id: string; patch: Pick<ListItem, 'name' | 'quantity' | 'unit'> }
   | { type: 'setItemAisle'; id: string; aisle: Aisle }
   | { type: 'addItem'; name: string }
+  /** Shopping list prices: use this product at this store (and buy it there). */
+  | { type: 'pickProduct'; id: string; store: StoreId; product: Product }
+  /** Shopping list prices: buy it at this store, or null for whichever is cheaper. */
+  | { type: 'pickStore'; id: string; store: StoreId | null }
+  /** Shopping list prices: forget the picks and go back to the automatic suggestion. */
+  | { type: 'clearPricePick'; id: string }
   | { type: 'deleteItem'; id: string }
   | { type: 'clearChecked' }
   | { type: 'addSampleRecipes' }
@@ -154,6 +163,17 @@ export function reducer(state: State, action: Action): State {
       };
       return { ...state, list: [...state.list, item] };
     }
+    case 'pickProduct':
+      return withPricePick(state, action.id, (pick) => ({ ...pick, [action.store]: action.product, store: action.store }));
+    case 'pickStore':
+      return withPricePick(state, action.id, (pick) => {
+        const next: PricePick = { ...pick };
+        if (action.store) next.store = action.store;
+        else delete next.store;
+        return next;
+      });
+    case 'clearPricePick':
+      return withPricePick(state, action.id, () => null);
     case 'deleteItem': {
       const item = state.list.find((i) => i.id === action.id);
       return {
@@ -220,6 +240,28 @@ export function withItemAisle(state: State, id: string, aisle: Aisle): State {
     ingredients: state.ingredients.map((i) => (i.id === ingredient.id ? { ...i, aisle } : i)),
     list: state.list.map((i) => (sameIngredient(i) ? { ...i, aisle } : i)),
   };
+}
+
+/**
+ * Changes the price pick of a shopping list line. Picks belong to the
+ * ingredient, so they're shared by the household and used on later lists. A
+ * line added by hand that isn't a known ingredient becomes one.
+ */
+export function withPricePick(state: State, id: string, change: (pick: PricePick) => PricePick | null): State {
+  const item = state.list.find((i) => i.id === id);
+  if (!item) return state;
+  let ingredient = item.key
+    ? state.ingredients.find((i) => i.id === item.key!.split('|')[0])
+    : ingredientByName(state, item.name);
+  let ingredients = state.ingredients;
+  if (!ingredient) {
+    ingredient = { id: ingredientIdForName(state.householdId, item.name), name: item.name.trim(), aisle: item.aisle, density: null };
+    ingredients = [...ingredients, ingredient];
+  }
+  const next = change(ingredient.pricePick ?? {});
+  const empty = !next || (!next.store && !next.woolies && !next.coles);
+  const updated: Ingredient = { ...ingredient, pricePick: empty ? null : next };
+  return { ...state, ingredients: ingredients.map((i) => (i.id === updated.id ? updated : i)) };
 }
 
 /** Id for an ingredient first added by name, the same on every device so two people adding "Garlic" offline share a row. */

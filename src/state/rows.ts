@@ -6,6 +6,8 @@
  * SQLite, where booleans are 0/1 and arrays are JSON text.
  */
 import {
+  parsePricePick,
+  pricePickText,
   stableUuid,
   type Aisle,
   type Ingredient,
@@ -72,7 +74,11 @@ export function settingsRow(s: Settings): Row {
 }
 
 export function ingredientRow(i: Ingredient, householdId: string): Row {
-  return { household_id: householdId, name: i.name, aisle: i.aisle, density: opt(i.density) };
+  const row: Row = { household_id: householdId, name: i.name, aisle: i.aisle, density: opt(i.density) };
+  // Only sent once someone has picked a product, so households that haven't
+  // added the price_pick column yet (migration 004) keep syncing everything else.
+  if (i.pricePick !== undefined) row.price_pick = pricePickText(i.pricePick);
+  return row;
 }
 
 export function recipeRows(r: Recipe, householdId: string) {
@@ -203,6 +209,7 @@ export function rowsToState(rows: Rows, householdId: string): State {
       name: String(i.name ?? ''),
       aisle: (str(i.aisle) as Aisle) ?? 'other',
       density: num(i.density) ?? null,
+      pricePick: parsePricePick(i.price_pick) ?? undefined,
     })),
     plan: rows.plan_entries.map((e) => ({
       id: e.id,

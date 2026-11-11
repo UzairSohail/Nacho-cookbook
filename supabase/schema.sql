@@ -29,6 +29,7 @@ create table ingredients (
   name text not null,
   aisle text not null default 'other',
   density numeric, -- grams per millilitre, null if unknown
+  price_pick text,  -- JSON: chosen Woolworths / Coles products and store (004_price_picks.sql)
   unique (household_id, name)
 );
 
