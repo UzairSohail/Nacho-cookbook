@@ -163,8 +163,13 @@ export async function sortWithGemini(
         signal: AbortSignal.timeout(Math.max(5_000, GEMINI_TIMEOUT_MS - (Date.now() - started))),
       });
     } catch (e) {
-      const timedOut = e instanceof Error && (e.name === 'TimeoutError' || /timed? ?out/i.test(e.message));
-      throw new AiSortError(timedOut ? 'Gemini took too long to answer.' : `Couldn't reach Gemini: ${e instanceof Error ? e.message : e}`, 'failed');
+      const seconds = Math.round((Date.now() - started) / 1000);
+      const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+      const timedOut = e instanceof Error && e.name === 'TimeoutError';
+      throw new AiSortError(
+        timedOut ? `Gemini took too long to answer (${seconds}s).` : `Couldn't reach Gemini after ${seconds}s (${detail.slice(0, 200)}).`,
+        'failed',
+      );
     }
   };
   let response = await ask(true);
@@ -185,4 +190,36 @@ export async function sortWithGemini(
   const answer = body?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
   if (!answer) throw new AiSortError(`Gemini gave no answer (${body?.candidates?.[0]?.finishReason ?? 'no candidates'}).`, 'failed');
   return recipeFromAnswer(answer, sourceUrl);
+}
+
+/**
+ * A quick health check of the Gemini setup, for troubleshooting from outside
+ * the app (GET import-recipe?check=gemini): looks the model up, then asks it
+ * for a one-word reply, timing both. Says nothing about the key itself.
+ */
+export async function checkGemini(options: { apiKey?: string; model?: string; fetchImpl?: typeof fetch } = {}) {
+  const { apiKey, model = DEFAULT_GEMINI_MODEL, fetchImpl = fetch } = options;
+  if (!apiKey) return { model, keySet: false };
+  const base = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`;
+  const timed = async (url: string, init: RequestInit) => {
+    const started = Date.now();
+    try {
+      const res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(30_000) });
+      const text = await res.text();
+      return { status: res.status, ms: Date.now() - started, body: text.slice(0, 400) };
+    } catch (e) {
+      return { ms: Date.now() - started, error: e instanceof Error ? `${e.name}: ${e.message}` : String(e) };
+    }
+  };
+  const headers = { 'content-type': 'application/json', 'x-goog-api-key': apiKey };
+  const lookup = await timed(base, { headers });
+  const reply = await timed(`${base}:generateContent`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: 'Reply with the word ok.' }] }],
+      generationConfig: { maxOutputTokens: 20, thinkingConfig: { thinkingBudget: 0 } },
+    }),
+  });
+  return { model, keySet: true, lookup, reply };
 }
