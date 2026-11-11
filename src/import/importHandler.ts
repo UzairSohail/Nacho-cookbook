@@ -12,7 +12,7 @@
  */
 import { pageText, recipeAsText, withPageDetails } from '@/src/core/recipeForAi';
 import { extractRecipe, NoRecipeFoundError, type ImportedRecipe } from '@/src/core/recipeImport';
-import { AiSortError, MAX_TEXT_LENGTH, sortWithGemini } from './aiSort';
+import { AiSortError, checkGemini, MAX_TEXT_LENGTH, sortWithGemini } from './aiSort';
 import { fetchPage, ImportError, NO_RECIPE_MESSAGE } from './pageFetch';
 
 /** Edge Function settings and secrets (Deno), undefined when run elsewhere. */
@@ -102,6 +102,9 @@ async function sortPageWithAi(
 export async function handleImport(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'GET' && req.method !== 'POST') return json({ error: 'Use POST.', code: 'bad-url' }, 405);
+  if (req.method === 'GET' && new URL(req.url).searchParams.get('check') === 'gemini') {
+    return json(await checkGemini({ apiKey: env('GEMINI_API_KEY'), model: env('GEMINI_MODEL') }));
+  }
   const body: RequestBody = req.method === 'POST' ? ((await req.json().catch(() => null)) as RequestBody) : null;
   if (typeof body?.text === 'string') return sortText(req, { text: body.text, sourceUrl: body.sourceUrl });
   const target = req.method === 'GET' ? new URL(req.url).searchParams.get('url') : typeof body?.url === 'string' ? body.url : null;

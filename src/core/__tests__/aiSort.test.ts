@@ -301,12 +301,22 @@ describe('Gemini speed settings', () => {
     const slow = vi.fn(async () => {
       throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
     }) as unknown as typeof fetch;
-    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: slow })).rejects.toThrow('Gemini took too long to answer.');
+    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: slow })).rejects.toThrow(/Gemini took too long to answer \(\d+s\)/);
   });
 
   it('does not retry other bad requests', async () => {
     const bad = vi.fn(async () => new Response('{"error":{"message":"API key not valid"}}', { status: 400 })) as unknown as typeof fetch;
     await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: bad })).rejects.toThrow(/API key not valid/);
     expect(bad).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('checkGemini', () => {
+  it('times a model lookup and a one-word reply', async () => {
+    const { checkGemini } = await import('@/src/import/aiSort');
+    const fetchImpl = vi.fn(async (u: string) => new Response(u.endsWith(':generateContent') ? '{"candidates":[]}' : '{"name":"models/x"}')) as unknown as typeof fetch;
+    const r = await checkGemini({ apiKey: 'k', fetchImpl });
+    expect(r).toMatchObject({ keySet: true, lookup: { status: 200 }, reply: { status: 200 } });
+    expect(await checkGemini({})).toEqual({ model: 'gemini-flash-latest', keySet: false });
   });
 });
