@@ -11,8 +11,12 @@
 import { MAX_AI_TEXT } from '@/src/core/recipeForAi';
 import type { ImportedIngredientGroup, ImportedRecipe, ImportedStepGroup } from '@/src/core/recipeImport';
 
-/** Gemini's "always the current Flash model" name, so the app keeps working when Google retires a version. */
-export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
+/**
+ * Gemini's "always the current Flash-Lite" name, so the app keeps working when
+ * Google retires a version. Flash-Lite answers in seconds; free-tier Flash was
+ * often overloaded or took over 30 seconds (checked live 2026-11-11).
+ */
+export const DEFAULT_GEMINI_MODEL = 'gemini-flash-lite-latest';
 
 /** Longer text than this isn't a recipe (and would eat the free quota). */
 export const MAX_TEXT_LENGTH = MAX_AI_TEXT;
@@ -149,7 +153,7 @@ export function recipeFromAnswer(answer: string, sourceUrl = ''): ImportedRecipe
  * (429), unknown (404) or too slow. Free-tier Flash is often "experiencing
  * high demand", and Flash-Lite is quick and good enough for sorting.
  */
-export const FALLBACK_GEMINI_MODELS = ['gemini-flash-lite-latest', 'gemini-2.5-flash'];
+export const FALLBACK_GEMINI_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash'];
 
 /** The longest one model gets before the next is tried. */
 const PER_MODEL_TIMEOUT_MS = 20_000;

@@ -72,7 +72,7 @@ describe('sortWithGemini', () => {
     const r = await sortWithGemini('the caption', '', { apiKey: 'k', fetchImpl: fetchImpl as unknown as typeof fetch });
     expect(r.title).toBe('Crispy chilli beef');
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent');
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent');
     expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe('k');
     const body = JSON.parse(String(init.body));
     expect(body.generationConfig.responseMimeType).toBe('application/json');
@@ -301,12 +301,12 @@ describe('Gemini speed settings', () => {
     const slow = vi.fn(async () => {
       throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
     }) as unknown as typeof fetch;
-    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: slow })).rejects.toThrow(/Gemini couldn't answer after \d+s \(gemini-flash-latest: too slow; /);
+    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: slow })).rejects.toThrow(/Gemini couldn't answer after \d+s \(gemini-flash-lite-latest: too slow; /);
   });
 
   it('asks once more without the thinking setting on any 400, then moves on, saying why', async () => {
     const bad = vi.fn(async () => new Response('{"error":{"message":"API key not valid"}}', { status: 400 })) as unknown as typeof fetch;
-    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: bad })).rejects.toThrow(/gemini-flash-latest: 400 API key not valid/);
+    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: bad })).rejects.toThrow(/gemini-flash-lite-latest: 400 API key not valid/);
     expect(bad).toHaveBeenCalledTimes(6);
   });
 
@@ -328,28 +328,28 @@ describe('checkGemini', () => {
     const fetchImpl = vi.fn(async (u: string) => new Response(u.endsWith(':generateContent') ? '{"candidates":[]}' : '{"name":"models/x"}')) as unknown as typeof fetch;
     const r = await checkGemini({ apiKey: 'k', fetchImpl });
     expect(r).toMatchObject({ keySet: true, lookup: { status: 200 }, reply: { status: 200 } });
-    expect(await checkGemini({})).toEqual({ model: 'gemini-flash-latest', keySet: false });
+    expect(await checkGemini({})).toEqual({ model: 'gemini-flash-lite-latest', keySet: false });
   });
 });
 
 describe('Gemini model fallback', () => {
-  it('tries Flash-Lite when Flash is overloaded', async () => {
+  it('tries Flash when Flash-Lite is overloaded', async () => {
     const asked: string[] = [];
     const fetchImpl = vi.fn(async (u: string) => {
       asked.push(u.split('/models/')[1].split(':')[0]);
-      return u.includes('gemini-flash-latest')
+      return u.includes('gemini-flash-lite-latest')
         ? new Response('{"error":{"code":503,"message":"This model is currently experiencing high demand."}}', { status: 503 })
         : geminiReply(answer);
     }) as unknown as typeof fetch;
     const r = await sortWithGemini('caption', '', { apiKey: 'k', fetchImpl });
     expect(r.title).toBe('Crispy chilli beef');
-    expect(asked).toEqual(['gemini-flash-latest', 'gemini-flash-lite-latest']);
+    expect(asked).toEqual(['gemini-flash-lite-latest', 'gemini-flash-latest']);
   });
 
   it('lists what each model said when none can answer', async () => {
     const down = vi.fn(async () => new Response('{"error":{"message":"high demand"}}', { status: 503 })) as unknown as typeof fetch;
     await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: down })).rejects.toThrow(
-      /gemini-flash-latest: 503 high demand; gemini-flash-lite-latest: 503/,
+      /gemini-flash-lite-latest: 503 high demand; gemini-flash-latest: 503/,
     );
   });
 });
