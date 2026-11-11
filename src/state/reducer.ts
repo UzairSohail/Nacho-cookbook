@@ -5,8 +5,10 @@
  */
 import {
   type Aisle,
+  freePlanSlot,
   generateShoppingList,
   guessAisle,
+  plannedRecipes,
   reconcileList,
   stableUuid,
   uuid,
@@ -50,6 +52,10 @@ export type Action =
   | { type: 'togglePantry'; ingredientId: string }
   | { type: 'setMeal'; date: string; slot: MealSlot; recipeId: string | null; servings?: number }
   | { type: 'setMealServings'; entryId: string; servings: number }
+  /** Planner: put a recipe on the list for a week or fortnight, then refresh the shopping list for it. */
+  | { type: 'planRecipe'; range: DateRange; recipeId: string; servings?: number }
+  | { type: 'unplanRecipe'; range: DateRange; recipeId: string }
+  | { type: 'setPlannedServings'; range: DateRange; recipeId: string; servings: number }
   | { type: 'generateList'; range: DateRange }
   | { type: 'toggleItem'; id: string }
   | { type: 'editItem'; id: string; patch: Pick<ListItem, 'name' | 'quantity' | 'unit'> }
@@ -93,20 +99,37 @@ export function reducer(state: State, action: Action): State {
         ...state,
         plan: state.plan.map((e) => (e.id === action.entryId ? { ...e, servings: Math.max(1, action.servings) } : e)),
       };
-    case 'generateList': {
-      const { items } = generateShoppingList({
-        entries: state.plan,
-        recipes: new Map(state.recipes.map((r) => [r.id, r])),
-        catalog: new Map(state.ingredients.map((i) => [i.id, i])),
-        range: action.range,
-        system: state.settings.system,
-        standard: state.settings.standard,
-      });
-      return {
-        ...state,
-        list: reconcileList(state.list, items, new Set(state.dismissedKeys), uuid),
+    case 'planRecipe': {
+      if (plannedRecipes(state.plan, action.range).some((p) => p.recipeId === action.recipeId)) return state;
+      const at = freePlanSlot(state.plan, action.range);
+      if (!at) return state;
+      const entry: PlanEntry = {
+        id: planEntryId(state.householdId, at.date, at.slot),
+        date: at.date,
+        slot: at.slot,
+        recipeId: action.recipeId,
+        servings: Math.max(1, action.servings ?? state.settings.householdSize),
       };
+      return withListFor({ ...state, plan: [...state.plan, entry] }, action.range);
     }
+    case 'unplanRecipe': {
+      const planned = plannedRecipes(state.plan, action.range).find((p) => p.recipeId === action.recipeId);
+      if (!planned) return state;
+      const ids = new Set(planned.entryIds);
+      return withListFor({ ...state, plan: state.plan.filter((e) => !ids.has(e.id)) }, action.range);
+    }
+    case 'setPlannedServings': {
+      const planned = plannedRecipes(state.plan, action.range).find((p) => p.recipeId === action.recipeId);
+      if (!planned) return state;
+      // Older plans can have the recipe on several days: keep one row with the new total.
+      const [keep, ...rest] = planned.entryIds;
+      const drop = new Set(rest);
+      const servings = Math.max(1, action.servings);
+      const plan = state.plan.filter((e) => !drop.has(e.id)).map((e) => (e.id === keep ? { ...e, servings } : e));
+      return withListFor({ ...state, plan }, action.range);
+    }
+    case 'generateList':
+      return withListFor(state, action.range);
     case 'toggleItem':
       return { ...state, list: state.list.map((i) => (i.id === action.id ? { ...i, checked: !i.checked } : i)) };
     case 'editItem':
@@ -154,6 +177,19 @@ export function reducer(state: State, action: Action): State {
         plan: state.plan.filter((e) => e.recipeId !== action.id),
       };
   }
+}
+
+/** Rebuilds the shopping list from the recipes planned in `range`, keeping hand-made changes. */
+function withListFor(state: State, range: DateRange): State {
+  const { items } = generateShoppingList({
+    entries: state.plan,
+    recipes: new Map(state.recipes.map((r) => [r.id, r])),
+    catalog: new Map(state.ingredients.map((i) => [i.id, i])),
+    range,
+    system: state.settings.system,
+    standard: state.settings.standard,
+  });
+  return { ...state, list: reconcileList(state.list, items, new Set(state.dismissedKeys), uuid) };
 }
 
 const ingredientByName = (state: State, name: string) => {

@@ -7,40 +7,37 @@ import {
   AISLE_LABELS,
   AISLE_ORDER,
   formatAmount,
-  fortnightDates,
   listToText,
   parseQuantity,
+  periodRange,
   today,
-  type DateRange,
   type ListItem,
 } from '@/src/core';
+import { periodName, usePlanPeriod } from '@/src/state/planPeriod';
 import { useStore } from '@/src/state/store';
 
-type RangeChoice = 'fortnight' | 'week1' | 'week2';
+type RangeChoice = 'this' | 'next';
 
 export default function ShoppingListScreen() {
   const { state, dispatch } = useStore();
   const c = useTheme();
   const { system, standard } = state.settings;
-  const [choice, setChoice] = useState<RangeChoice>('fortnight');
+  const period = usePlanPeriod();
+  const name = periodName(period);
+  const [choice, setChoice] = useState<RangeChoice>('this');
   const [newItem, setNewItem] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
-  const days = fortnightDates(today());
-  const ranges: Record<RangeChoice, DateRange> = {
-    fortnight: { start: days[0], end: days[13] },
-    week1: { start: days[0], end: days[6] },
-    week2: { start: days[7], end: addDays(days[7], 6) },
-  };
+  const current = periodRange(today(), period);
+  const range = choice === 'this' ? current : periodRange(addDays(current.start, period), period);
 
   const short = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
-  const range = ranges[choice];
   const rangeText = `${short.format(new Date(range.start))} – ${short.format(new Date(range.end))}`;
 
   const generate = () => {
     const planned = state.plan.some((e) => e.recipeId && e.date >= range.start && e.date <= range.end);
-    setNote(planned ? null : `Nothing is planned for ${rangeText} yet. Add meals in the Planner first.`);
+    setNote(planned ? null : `Nothing is planned for ${rangeText} yet. Add recipes in the Planner first.`);
     if (planned) dispatch({ type: 'generateList', range });
   };
 
@@ -78,11 +75,11 @@ export default function ShoppingListScreen() {
       <Card style={styles.gap}>
         <Text variant="label">MAKE A LIST FROM THE PLAN</Text>
         <RNView style={styles.row}>
-          {(['fortnight', 'week1', 'week2'] as const).map((r) => (
+          {(['this', 'next'] as const).map((r) => (
             <Chip
               key={r}
               role="radio"
-              label={r === 'fortnight' ? 'Whole fortnight' : r === 'week1' ? 'Week 1' : 'Week 2'}
+              label={`${r === 'this' ? 'This' : 'Next'} ${name}`}
               selected={choice === r}
               onPress={() => {
                 setChoice(r);
@@ -96,7 +93,7 @@ export default function ShoppingListScreen() {
           onPress={generate}
         />
         {note ? <Text style={{ color: c.tint }}>{note}</Text> : null}
-        <Text variant="muted">{rangeText}. Updating keeps anything you added or changed by hand.</Text>
+        <Text variant="muted">{rangeText}. Adding recipes in the Planner updates the list for you. Updating keeps anything you added or changed by hand.</Text>
       </Card>
 
       <RNView style={[styles.row, { flexWrap: 'nowrap' }]}>
@@ -162,7 +159,7 @@ export default function ShoppingListScreen() {
       ) : (
         <Card style={{ gap: 6 }}>
           <Text variant="heading">Nothing on the list yet</Text>
-          <Text variant="muted">Plan some meals, pick the dates above and tap Generate list. You can add things by hand too.</Text>
+          <Text variant="muted">Add recipes in the Planner and their ingredients show up here. You can add things by hand too.</Text>
         </Card>
       )}
 
