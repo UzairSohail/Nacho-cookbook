@@ -301,7 +301,7 @@ describe('Gemini speed settings', () => {
     const slow = vi.fn(async () => {
       throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
     }) as unknown as typeof fetch;
-    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: slow })).rejects.toThrow(/Gemini took too long to answer \(\d+s\)/);
+    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: slow })).rejects.toThrow(/Gemini couldn't answer after \d+s \(gemini-flash-latest: too slow; /);
   });
 
   it('does not retry other bad requests', async () => {
@@ -318,5 +318,27 @@ describe('checkGemini', () => {
     const r = await checkGemini({ apiKey: 'k', fetchImpl });
     expect(r).toMatchObject({ keySet: true, lookup: { status: 200 }, reply: { status: 200 } });
     expect(await checkGemini({})).toEqual({ model: 'gemini-flash-latest', keySet: false });
+  });
+});
+
+describe('Gemini model fallback', () => {
+  it('tries Flash-Lite when Flash is overloaded', async () => {
+    const asked: string[] = [];
+    const fetchImpl = vi.fn(async (u: string) => {
+      asked.push(u.split('/models/')[1].split(':')[0]);
+      return u.includes('gemini-flash-latest')
+        ? new Response('{"error":{"code":503,"message":"This model is currently experiencing high demand."}}', { status: 503 })
+        : geminiReply(answer);
+    }) as unknown as typeof fetch;
+    const r = await sortWithGemini('caption', '', { apiKey: 'k', fetchImpl });
+    expect(r.title).toBe('Crispy chilli beef');
+    expect(asked).toEqual(['gemini-flash-latest', 'gemini-flash-lite-latest']);
+  });
+
+  it('lists what each model said when none can answer', async () => {
+    const down = vi.fn(async () => new Response('{"error":{"message":"high demand"}}', { status: 503 })) as unknown as typeof fetch;
+    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: down })).rejects.toThrow(
+      /gemini-flash-latest: 503 high demand; gemini-flash-lite-latest: 503/,
+    );
   });
 });

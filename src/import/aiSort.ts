@@ -144,7 +144,20 @@ export function recipeFromAnswer(answer: string, sourceUrl = ''): ImportedRecipe
   };
 }
 
-/** Asks Gemini to sort the text. `fetchImpl` is for tests. */
+/**
+ * Models tried in turn when one is overloaded (503), out of free allowance
+ * (429), unknown (404) or too slow. Free-tier Flash is often "experiencing
+ * high demand", and Flash-Lite is quick and good enough for sorting.
+ */
+export const FALLBACK_GEMINI_MODELS = ['gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+
+/** The longest one model gets before the next is tried. */
+const PER_MODEL_TIMEOUT_MS = 20_000;
+
+/** One model's failure that is worth trying the next model for. */
+class TryNextModel extends Error {}
+
+/** Asks Gemini to sort the text, trying the fallback models in turn. `fetchImpl` is for tests. */
 export async function sortWithGemini(
   text: string,
   sourceUrl: string,
@@ -152,44 +165,63 @@ export async function sortWithGemini(
 ): Promise<ImportedRecipe> {
   const { apiKey, model = DEFAULT_GEMINI_MODEL, fetchImpl = fetch } = options;
   if (!apiKey) throw new AiSortError('AI sorting is not set up yet.', 'not-configured');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const models = [...new Set([model, ...FALLBACK_GEMINI_MODELS])];
   const started = Date.now();
-  const ask = async (thinking: boolean) => {
+  const problems: string[] = [];
+
+  const ask = async (name: string, thinking: boolean) => {
+    const left = GEMINI_TIMEOUT_MS - (Date.now() - started);
     try {
-      return await fetchImpl(url, {
+      return await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(name)}:generateContent`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify(geminiRequest(text.slice(0, MAX_TEXT_LENGTH), { thinking })),
-        signal: AbortSignal.timeout(Math.max(5_000, GEMINI_TIMEOUT_MS - (Date.now() - started))),
+        signal: AbortSignal.timeout(Math.max(3_000, Math.min(PER_MODEL_TIMEOUT_MS, left))),
       });
     } catch (e) {
-      const seconds = Math.round((Date.now() - started) / 1000);
-      const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
       const timedOut = e instanceof Error && e.name === 'TimeoutError';
-      throw new AiSortError(
-        timedOut ? `Gemini took too long to answer (${seconds}s).` : `Couldn't reach Gemini after ${seconds}s (${detail.slice(0, 200)}).`,
-        'failed',
-      );
+      throw new TryNextModel(timedOut ? 'too slow' : `unreachable (${e instanceof Error ? `${e.name}: ${e.message}` : e})`.slice(0, 150));
     }
   };
-  let response = await ask(true);
-  // A model that won't take the thinking setting says so with a 400: ask again without it.
-  if (response.status === 400) {
-    const detail = await response.text().catch(() => '');
-    if (/thinking/i.test(detail)) response = await ask(false);
-    else throw new AiSortError(`Gemini answered 400: ${detail.slice(0, 300)}`, 'failed');
+
+  const sortWith = async (name: string): Promise<ImportedRecipe> => {
+    let response = await ask(name, true);
+    // A model that won't take the thinking setting says so with a 400: ask again without it.
+    if (response.status === 400) {
+      const detail = await response.text().catch(() => '');
+      if (!/thinking/i.test(detail)) throw new AiSortError(`Gemini answered 400: ${detail.slice(0, 300)}`, 'failed');
+      response = await ask(name, false);
+    }
+    if (response.status === 429 || response.status === 503 || response.status === 404 || response.status >= 500) {
+      const detail = await response.text().catch(() => '');
+      const message = /"message":\s*"([^"]+)"/.exec(detail)?.[1] ?? '';
+      throw new TryNextModel(`${response.status}${message ? ` ${message.slice(0, 80)}` : ''}`);
+    }
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new AiSortError(`Gemini answered ${response.status}: ${detail.slice(0, 300)}`, 'failed');
+    }
+    const body = (await response.json().catch(() => null)) as {
+      candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
+    } | null;
+    const answer = body?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
+    if (!answer) throw new TryNextModel(`no answer (${body?.candidates?.[0]?.finishReason ?? 'no candidates'})`);
+    return recipeFromAnswer(answer, sourceUrl);
+  };
+
+  for (const name of models) {
+    if (Date.now() - started > GEMINI_TIMEOUT_MS - 3_000) break;
+    try {
+      return await sortWith(name);
+    } catch (e) {
+      if (!(e instanceof TryNextModel)) throw e;
+      problems.push(`${name}: ${e.message}`);
+    }
   }
-  if (response.status === 429) throw new AiSortError('The free Gemini allowance is used up for now.', 'busy');
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new AiSortError(`Gemini answered ${response.status}: ${detail.slice(0, 300)}`, 'failed');
-  }
-  const body = (await response.json().catch(() => null)) as {
-    candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
-  } | null;
-  const answer = body?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
-  if (!answer) throw new AiSortError(`Gemini gave no answer (${body?.candidates?.[0]?.finishReason ?? 'no candidates'}).`, 'failed');
-  return recipeFromAnswer(answer, sourceUrl);
+  const seconds = Math.round((Date.now() - started) / 1000);
+  if (problems.length && problems.every((p) => /: 429/.test(p)))
+    throw new AiSortError('The free Gemini allowance is used up for now.', 'busy');
+  throw new AiSortError(`Gemini couldn't answer after ${seconds}s (${problems.join('; ')}).`, 'failed');
 }
 
 /**
