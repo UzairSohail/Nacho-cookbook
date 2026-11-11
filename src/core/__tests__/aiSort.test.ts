@@ -304,10 +304,21 @@ describe('Gemini speed settings', () => {
     await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: slow })).rejects.toThrow(/Gemini couldn't answer after \d+s \(gemini-flash-latest: too slow; /);
   });
 
-  it('does not retry other bad requests', async () => {
+  it('asks once more without the thinking setting on any 400, then moves on, saying why', async () => {
     const bad = vi.fn(async () => new Response('{"error":{"message":"API key not valid"}}', { status: 400 })) as unknown as typeof fetch;
-    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: bad })).rejects.toThrow(/API key not valid/);
-    expect(bad).toHaveBeenCalledTimes(1);
+    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: bad })).rejects.toThrow(/gemini-flash-latest: 400 API key not valid/);
+    expect(bad).toHaveBeenCalledTimes(6);
+  });
+
+  it('uses Flash-Lite when it refuses the thinking setting with a plain invalid argument', async () => {
+    const fetchImpl = vi.fn(async (u: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      if (u.includes('gemini-flash-latest')) return new Response('{"error":{"message":"high demand"}}', { status: 503 });
+      return body.generationConfig.thinkingConfig
+        ? new Response('{"error":{"code":400,"message":"Request contains an invalid argument."}}', { status: 400 })
+        : geminiReply(answer);
+    }) as unknown as typeof fetch;
+    expect((await sortWithGemini('x', '', { apiKey: 'k', fetchImpl })).title).toBe('Crispy chilli beef');
   });
 });
 

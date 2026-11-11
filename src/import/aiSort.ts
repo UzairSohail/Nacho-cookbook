@@ -149,7 +149,7 @@ export function recipeFromAnswer(answer: string, sourceUrl = ''): ImportedRecipe
  * (429), unknown (404) or too slow. Free-tier Flash is often "experiencing
  * high demand", and Flash-Lite is quick and good enough for sorting.
  */
-export const FALLBACK_GEMINI_MODELS = ['gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+export const FALLBACK_GEMINI_MODELS = ['gemini-flash-lite-latest', 'gemini-2.5-flash'];
 
 /** The longest one model gets before the next is tried. */
 const PER_MODEL_TIMEOUT_MS = 20_000;
@@ -186,11 +186,14 @@ export async function sortWithGemini(
 
   const sortWith = async (name: string): Promise<ImportedRecipe> => {
     let response = await ask(name, true);
-    // A model that won't take the thinking setting says so with a 400: ask again without it.
+    // A model that won't take the thinking setting answers 400, sometimes just
+    // "Request contains an invalid argument" (Flash-Lite): ask again without it.
     if (response.status === 400) {
-      const detail = await response.text().catch(() => '');
-      if (!/thinking/i.test(detail)) throw new AiSortError(`Gemini answered 400: ${detail.slice(0, 300)}`, 'failed');
       response = await ask(name, false);
+      if (response.status === 400) {
+        const detail = await response.text().catch(() => '');
+        throw new TryNextModel(`400 ${/"message":\s*"([^"]+)"/.exec(detail)?.[1]?.slice(0, 80) ?? ''}`.trim());
+      }
     }
     if (response.status === 429 || response.status === 503 || response.status === 404 || response.status >= 500) {
       const detail = await response.text().catch(() => '');
@@ -245,13 +248,16 @@ export async function checkGemini(options: { apiKey?: string; model?: string; fe
   };
   const headers = { 'content-type': 'application/json', 'x-goog-api-key': apiKey };
   const lookup = await timed(base, { headers });
-  const reply = await timed(`${base}:generateContent`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: 'Reply with the word ok.' }] }],
-      generationConfig: { maxOutputTokens: 20, thinkingConfig: { thinkingBudget: 0 } },
-    }),
-  });
-  return { model, keySet: true, lookup, reply };
+  const replyWith = (thinkingOff: boolean) =>
+    timed(`${base}:generateContent`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: 'Reply with the word ok.' }] }],
+        generationConfig: { maxOutputTokens: 20, ...(thinkingOff ? { thinkingConfig: { thinkingBudget: 0 } } : {}) },
+      }),
+    });
+  const reply = await replyWith(true);
+  const replyPlain = reply.status === 400 ? await replyWith(false) : undefined;
+  return { model, keySet: true, lookup, reply, ...(replyPlain ? { replyPlain } : {}) };
 }
