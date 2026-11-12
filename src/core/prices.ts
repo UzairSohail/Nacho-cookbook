@@ -9,6 +9,7 @@
  *
  * Costs count whole packs: 300 g of flour from a 1 kg bag costs the bag.
  */
+import type { ShopAiLinePlan } from './shopAi';
 import { dimensionOf, parseUnit, toBase, type Dimension, type MeasureStandard } from './units';
 
 export type StoreId = 'woolies' | 'coles';
@@ -310,6 +311,8 @@ export interface StoreCost {
   cost: number;
   /** True when someone chose this product; false for the automatic suggestion. */
   picked: boolean;
+  /** True when the product and pack count are Gemini's suggestion. */
+  ai?: boolean;
 }
 
 export interface LineCost {
@@ -319,6 +322,10 @@ export interface LineCost {
   chosen: StoreId | null;
   /** True when the store was picked rather than worked out. */
   storePicked: boolean;
+  /** Gemini's "what to buy" for this line ("1 garlic bulb"), when it was asked. */
+  aiBuy?: string;
+  /** Set when Gemini says this line is bought with another one (that line's id); it then costs nothing. */
+  coveredBy?: string;
 }
 
 export const costAt = (store: StoreId, product: Product, need: Need, picked: boolean, density?: number | null): StoreCost => {
@@ -355,8 +362,14 @@ export function costLine(
   need: Need,
   data: PriceData | null,
   pick: PricePick | null | undefined,
-  opts: { produce?: boolean; density?: number | null } = {},
+  opts: { produce?: boolean; density?: number | null; ai?: ShopAiLinePlan | null } = {},
 ): LineCost {
+  const ai = opts.ai ?? null;
+  const aiBuy = ai?.buy || undefined;
+  // Bought with another line, unless someone has picked a product for this one.
+  if (ai?.coveredBy && !pick?.woolies && !pick?.coles) {
+    return { woolies: null, coles: null, chosen: null, storePicked: false, aiBuy, coveredBy: ai.coveredBy };
+  }
   const at = (store: StoreId): StoreCost | null => {
     const saved = pick?.[store];
     if (saved) {
@@ -365,6 +378,13 @@ export function costLine(
       return costAt(store, fresh ?? saved, need, true, opts.density);
     }
     if (!data) return null;
+    const aiPick = ai?.[store];
+    const aiProduct = aiPick ? data.stores[store].byId.get(aiPick.productId) : undefined;
+    if (aiPick && aiProduct) {
+      // Gemini's count can be higher (it may be buying for two lines at once), never too few for this line.
+      const packs = Math.max(aiPick.packs, packsFor(need, aiProduct, opts.density));
+      return { store, product: aiProduct, packs, cost: packs * aiProduct.price, picked: false, ai: true };
+    }
     const product = suggest(name, need, data.stores[store], opts);
     return product ? costAt(store, product, need, false, opts.density) : null;
   };
@@ -380,7 +400,7 @@ export function costLine(
   } else {
     chosen = woolies ? 'woolies' : coles ? 'coles' : null;
   }
-  return { woolies, coles, chosen, storePicked };
+  return { woolies, coles, chosen, storePicked, ...(aiBuy ? { aiBuy } : {}) };
 }
 
 export interface ListTotals {
@@ -408,6 +428,8 @@ export function totalsFor(lines: LineCost[]): ListTotals {
     cheapest: 0, savings: { woolies: 0, coles: 0 },
   };
   for (const l of lines) {
+    // Bought with another line, so already counted there.
+    if (l.coveredBy) continue;
     if (!l.chosen) {
       t.unpriced += 1;
       continue;
