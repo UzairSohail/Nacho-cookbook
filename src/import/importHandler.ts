@@ -10,6 +10,9 @@
  * signed-in people only. The app falls back to its own rules when this fails.
  * POST { shop: ShopAiRequest } → { plan } : Gemini's pick of what to buy for each
  * shopping list line (see src/core/shopAi.ts), for signed-in people only.
+ * POST { photoFor: { title, ingredients? } } → { photo, pickedBy, note? }: a photo
+ * for a recipe imported without one, picked by Gemini (see recipePhoto.ts),
+ * for signed-in people only.
  * Bundled into supabase/functions/import-recipe/index.ts by `npm run build:import-function`.
  */
 import { pageText, recipeAsText, withPageDetails } from '@/src/core/recipeForAi';
@@ -17,6 +20,7 @@ import { planFromAnswer, shopGeminiRequest, ShopAiAnswerError, shopRequestProble
 import { extractRecipe, NoRecipeFoundError, type ImportedRecipe } from '@/src/core/recipeImport';
 import { AiSortError, askGemini, checkGemini, MAX_TEXT_LENGTH, sortWithGemini } from './aiSort';
 import { fetchPage, ImportError, NO_RECIPE_MESSAGE } from './pageFetch';
+import { checkPhotoSources, findRecipePhoto, searchableTitle } from './recipePhoto';
 
 /** Edge Function settings and secrets (Deno), undefined when run elsewhere. */
 const env = (name: string): string | undefined =>
@@ -43,7 +47,7 @@ const aiOptions = () => ({
   groqModel: env('GROQ_MODEL'),
 });
 
-type RequestBody = { url?: unknown; text?: unknown; sourceUrl?: unknown; shop?: unknown } | null;
+type RequestBody = { url?: unknown; text?: unknown; sourceUrl?: unknown; shop?: unknown; photoFor?: unknown } | null;
 
 /**
  * True when the request comes from someone signed in to the app (not just the
@@ -115,6 +119,19 @@ async function planShop(req: Request, shop: unknown): Promise<Response> {
   }
 }
 
+/** A photo for an imported recipe's name (see recipePhoto.ts). */
+async function photoFor(req: Request, ask: unknown): Promise<Response> {
+  if (!(await isSignedIn(req))) return json({ error: 'Sign in to get photos picked.', code: 'signed-out' }, 401);
+  const { title, ingredients } = (ask ?? {}) as { title?: unknown; ingredients?: unknown };
+  if (typeof title !== 'string' || !searchableTitle(title) || title.length > 200) {
+    return json({ error: 'Give the recipe’s name.', code: 'bad-title' }, 400);
+  }
+  const items = Array.isArray(ingredients) ? ingredients.filter((i): i is string => typeof i === 'string').map((i) => i.slice(0, 100)) : [];
+  const result = await findRecipePhoto(title.trim(), items.slice(0, 8), { ...aiOptions(), pexelsApiKey: env('PEXELS_API_KEY') });
+  if (result.note) console.warn('Photo pick note', title, result.note);
+  return json(result);
+}
+
 /**
  * The page's recipe sorted by AI, or null when AI isn't available (signed out,
  * no key, allowance used up, failed), so the page's own recipe data is used.
@@ -145,8 +162,12 @@ export async function handleImport(req: Request): Promise<Response> {
     const model = asked && /^gemini-[\w.-]{1,60}$/.test(asked) ? asked : env('GEMINI_MODEL');
     return json(await checkGemini({ apiKey: env('GEMINI_API_KEY'), model }));
   }
+  if (req.method === 'GET' && new URL(req.url).searchParams.get('check') === 'photos') {
+    return json(await checkPhotoSources({ pexelsApiKey: env('PEXELS_API_KEY') }));
+  }
   const body: RequestBody = req.method === 'POST' ? ((await req.json().catch(() => null)) as RequestBody) : null;
   if (body?.shop) return planShop(req, body.shop);
+  if (body?.photoFor) return photoFor(req, body.photoFor);
   if (typeof body?.text === 'string') return sortText(req, { text: body.text, sourceUrl: body.sourceUrl });
   const target = req.method === 'GET' ? new URL(req.url).searchParams.get('url') : typeof body?.url === 'string' ? body.url : null;
   if (!target) return json({ error: 'Give a recipe address.', code: 'bad-url' }, 400);

@@ -183,6 +183,8 @@ export interface GeminiOptions {
   groqModel?: string;
   /** Pause before busy models are retried (tests set 0). */
   retryPauseMs?: number;
+  /** The longest Gemini gets in all (default GEMINI_TIMEOUT_MS). */
+  budgetMs?: number;
 }
 
 /** Asks Gemini to sort the text, trying the fallback models in turn. `fetchImpl` is for tests. */
@@ -206,7 +208,8 @@ export async function askGemini<T>(
   const { apiKey, model = DEFAULT_GEMINI_MODEL, fetchImpl = fetch, groqApiKey, retryPauseMs = RETRY_PAUSE_MS } = options;
   if (!apiKey && !groqApiKey) throw new AiSortError('AI sorting is not set up yet.', 'not-configured');
   // With Groq to fall back on, Gemini gets less of the time.
-  const geminiBudget = groqApiKey ? GEMINI_TIMEOUT_MS - GROQ_RESERVE_MS : GEMINI_TIMEOUT_MS;
+  const budget = options.budgetMs ?? GEMINI_TIMEOUT_MS;
+  const geminiBudget = groqApiKey ? Math.max(5_000, budget - GROQ_RESERVE_MS) : budget;
   const models = [...new Set([model, ...FALLBACK_GEMINI_MODELS])];
   const started = Date.now();
   const problems: string[] = [];
@@ -283,7 +286,7 @@ export async function askGemini<T>(
   }
   if (groqApiKey) {
     try {
-      return parse(await askGroq(request(true), { apiKey: groqApiKey, model: options.groqModel, fetchImpl, ms: GEMINI_TIMEOUT_MS + 5_000 - (Date.now() - started) }));
+      return parse(await askGroq(request(true), { apiKey: groqApiKey, model: options.groqModel, fetchImpl, ms: budget + 5_000 - (Date.now() - started) }));
     } catch (e) {
       if (e instanceof AiSortError) throw e;
       problems.push(`groq: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200));
