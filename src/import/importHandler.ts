@@ -35,6 +35,14 @@ const json = (body: unknown, status = 200) =>
     headers: { ...CORS, 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
+/** The AI keys and models from the function's secrets. */
+const aiOptions = () => ({
+  apiKey: env('GEMINI_API_KEY'),
+  model: env('GEMINI_MODEL'),
+  groqApiKey: env('GROQ_API_KEY'),
+  groqModel: env('GROQ_MODEL'),
+});
+
 type RequestBody = { url?: unknown; text?: unknown; sourceUrl?: unknown; shop?: unknown } | null;
 
 /**
@@ -69,7 +77,7 @@ async function sortText(req: Request, body: { text: string; sourceUrl?: unknown 
   if (text.length > MAX_TEXT_LENGTH) return json({ error: 'That text is too long to be one recipe.', code: 'too-long' }, 413);
   const sourceUrl = typeof body.sourceUrl === 'string' ? body.sourceUrl : '';
   try {
-    const recipe = await sortWithGemini(text, sourceUrl, { apiKey: env('GEMINI_API_KEY'), model: env('GEMINI_MODEL') });
+    const recipe = await sortWithGemini(text, sourceUrl, aiOptions());
     return json({ recipe });
   } catch (e) {
     const code = e instanceof AiSortError ? e.code : 'failed';
@@ -96,7 +104,7 @@ async function planShop(req: Request, shop: unknown): Promise<Response> {
           throw e;
         }
       },
-      { apiKey: env('GEMINI_API_KEY'), model: env('GEMINI_MODEL') },
+      aiOptions(),
     );
     return json({ plan });
   } catch (e) {
@@ -117,13 +125,12 @@ async function sortPageWithAi(
   url: string,
   found: ImportedRecipe | null,
 ): Promise<{ recipe: ImportedRecipe } | { reason: string }> {
-  const apiKey = env('GEMINI_API_KEY');
-  if (!apiKey) return { reason: 'the Gemini key isn’t set up on the import helper.' };
+  if (!env('GEMINI_API_KEY') && !env('GROQ_API_KEY')) return { reason: 'the Gemini key isn’t set up on the import helper.' };
   if (!(await isSignedIn(req))) return { reason: 'the import helper couldn’t confirm you’re signed in.' };
   const text = found ? recipeAsText(found) : pageText(html);
   if (text.trim().length < 40) return { reason: 'the page had too little text.' };
   try {
-    return { recipe: withPageDetails(await sortWithGemini(text, url, { apiKey, model: env('GEMINI_MODEL') }), found, url) };
+    return { recipe: withPageDetails(await sortWithGemini(text, url, aiOptions()), found, url) };
   } catch (e) {
     if (!(e instanceof AiSortError) || e.code === 'failed') console.error('AI sort of page failed', url, e);
     return { reason: e instanceof AiSortError ? e.message : 'AI sorting failed.' };
