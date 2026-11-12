@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, useWindowDimensions, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
 import { PhotoField } from '@/components/PhotoField';
 import { Button, Card, Chip, Text, TextInput, View, useTheme } from '@/components/Themed';
@@ -24,6 +24,7 @@ import {
 } from '@/src/state/recipeDraft';
 import { recipePhotos, unusedPhotos } from '@/src/photos/paths';
 import { discardPhotos } from '@/src/photos/photoStore';
+import { findPhotoFor, type AutoPhoto } from '@/src/import/autoPhoto';
 import { clearPendingImport, peekPendingImport } from '@/src/state/pendingImport';
 import { useCatalog, useRecipeMap, useStore } from '@/src/state/store';
 
@@ -52,6 +53,27 @@ export default function EditRecipeScreen() {
     () => (existing ? draftFromRecipe(existing, catalog) : fromImport) ?? emptyDraft(state.settings.householdSize),
   );
   const [errors, setErrors] = useState<DraftErrors | null>(null);
+  // An imported recipe without a photo gets one picked by AI from free photo
+  // libraries. It only fills an empty photo the person hasn't touched.
+  const [autoPhoto, setAutoPhoto] = useState<AutoPhoto | 'looking' | null>(null);
+  const photoTouched = useRef(false);
+  useEffect(() => {
+    if (!fromImport || fromImport.photoUrls.length) return;
+    let cancelled = false;
+    const ingredients = fromImport.lines.flatMap((l) => (l.kind === 'ingredient' && l.name ? [l.name] : []));
+    setAutoPhoto('looking');
+    void findPhotoFor(fromImport.title, ingredients).then((photo) => {
+      if (cancelled) return;
+      if (!photo || photoTouched.current) return setAutoPhoto(null);
+      setDraft((d) => (d.photoUrls.length ? d : { ...d, photoUrls: [photo.url] }));
+      setAutoPhoto(photo);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Once, when the imported recipe opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [confirmDelete, setConfirmDelete] = useState(false);
   // Photos taken in this visit. Left unsaved, they're deleted when the editor closes.
   const added = useRef(new Set<string>());
@@ -87,6 +109,7 @@ export default function EditRecipeScreen() {
   };
   const setCover = (path: string | undefined) => {
     photoAdded(path);
+    photoTouched.current = true;
     // The first photo is the cover; any others (none yet) stay behind it.
     set({ photoUrls: path ? [path, ...draft.photoUrls.slice(1)] : draft.photoUrls.slice(1) });
   };
@@ -156,6 +179,16 @@ export default function EditRecipeScreen() {
             onChange={setCover}
             label="Recipe photo"
           />
+          {autoPhoto === 'looking' && !draft.photoUrls.length ? (
+            <RNView style={styles.row}>
+              <ActivityIndicator color={c.tint} />
+              <Text variant="muted">Finding a photo for this recipe…</Text>
+            </RNView>
+          ) : autoPhoto && autoPhoto !== 'looking' && draft.photoUrls[0] === autoPhoto.url ? (
+            <Text variant="muted">
+              Photo picked by AI (Gemini){autoPhoto.credit ? `: ${autoPhoto.credit}` : ''}. Change or remove it if it’s not right.
+            </Text>
+          ) : null}
         </Field>
         <Field label="NAME" error={errors?.title}>
           <TextInput
