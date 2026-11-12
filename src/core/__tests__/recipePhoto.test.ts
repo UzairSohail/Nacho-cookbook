@@ -59,6 +59,12 @@ const commonsBody = {
         ],
       },
       { index: 1, title: 'File:Map of Tuscany.svg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/m.png', mime: 'image/svg+xml', width: 2000, height: 2000 }] },
+      {
+        index: 4,
+        title: 'File:Lasagna 2022.jpg',
+        imageinfo: [{ thumburl: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/5/56/Lasagna_2022.jpg/1200px-Lasagna_2022.jpg', mime: 'image/jpeg', width: 4000, height: 3000 }],
+      },
+      { index: 5, title: 'File:Elsewhere.jpg', imageinfo: [{ thumburl: 'https://evil.test/x.jpg', mime: 'image/jpeg', width: 4000, height: 3000 }] },
       { index: 3, title: 'File:Tiny.jpg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/t.jpg', mime: 'image/jpeg', width: 200, height: 150 }] },
     ],
   },
@@ -121,8 +127,10 @@ describe('photo libraries', () => {
   it('reads Wikimedia Commons results: photos only, big enough, in search order', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify(commonsBody)));
     const found = await searchWikimedia('tuscan chicken', fetchImpl as unknown as typeof fetch);
-    expect(found).toHaveLength(1);
+    expect(found).toHaveLength(2);
     expect(found[0].description).toBe('Tuscan chicken: Chicken in a creamy sauce');
+    // Thumbnails now come from thumb.wikimedia.org (seen live 2026-11-12).
+    expect(found[1].url).toMatch(/^https:\/\/thumb\.wikimedia\.org\//);
     expect(found[0].credit).toBe('Dee (CC BY-SA 4.0), Wikimedia Commons');
     expect(found[0].url).toMatch(/^https:\/\/upload\.wikimedia\.org\//);
   });
@@ -260,6 +268,6 @@ describe('the import helper', () => {
   it('reports whether the photo libraries answer', async () => {
     stub();
     const res = await handleImport(new Request('https://project.supabase.co/functions/v1/import-recipe?check=photos'));
-    expect(await res.json()).toMatchObject({ pexelsKeySet: true, pexels: 3, wikimedia: 1, problems: [] });
+    expect(await res.json()).toMatchObject({ pexelsKeySet: true, pexels: 3, wikimedia: 2, problems: [] });
   });
 });
