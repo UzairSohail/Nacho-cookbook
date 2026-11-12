@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, View as RNView } from 'react-native';
 
-import { PriceLine, PricePanel, PriceSummary } from '@/components/ShoppingPrices';
+import { PricePanel, PriceSummary, PriceTag } from '@/components/ShoppingPrices';
 import { Button, Card, Chip, Text, TextInput, useTheme } from '@/components/Themed';
 import {
   addDays,
@@ -110,11 +110,15 @@ export default function ShoppingListScreen() {
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.content}>
       <Card style={styles.gap}>
-        <Text variant="label">MAKE A LIST FROM THE PLAN</Text>
+        <RNView style={styles.spread}>
+          <Text variant="label">MAKE A LIST FROM THE PLAN</Text>
+          <Text variant="muted" style={styles.small}>{rangeText}</Text>
+        </RNView>
         <RNView style={styles.row}>
           {(['this', 'next'] as const).map((r) => (
             <Chip
               key={r}
+              small
               role="radio"
               label={`${r === 'this' ? 'This' : 'Next'} ${name}`}
               selected={choice === r}
@@ -127,39 +131,14 @@ export default function ShoppingListScreen() {
         </RNView>
         <Button
           title={state.list.length ? 'Update from plan' : 'Generate list'}
+          kind={state.list.length ? 'secondary' : 'primary'}
           onPress={generate}
         />
         {note ? <Text style={{ color: c.tint }}>{note}</Text> : null}
-        <Text variant="muted">{rangeText}. Adding recipes in the Planner updates the list for you. Updating keeps anything you added or changed by hand.</Text>
+        <Text variant="muted" style={styles.small}>
+          Adding recipes in the Planner updates the list for you. Updating keeps anything you added or changed by hand.
+        </Text>
       </Card>
-
-      <RNView style={[styles.row, { flexWrap: 'nowrap' }]}>
-        <TextInput
-          value={newItem}
-          onChangeText={setNewItem}
-          placeholder="Add an item"
-          accessibilityLabel="Add an item"
-          style={{ flex: 1, minWidth: 0 }}
-          returnKeyType="done"
-          onSubmitEditing={addItem}
-        />
-        <Button title="Add" onPress={addItem} />
-      </RNView>
-
-      {state.list.length ? (
-        <RNView style={styles.gap}>
-          <Text variant="muted" accessibilityLiveRegion="polite">
-            {tickedCount === state.list.length
-              ? `All ${state.list.length} ticked off. Nice work!`
-              : `${tickedCount} of ${state.list.length} ticked off`}
-          </Text>
-          <RNView style={[styles.progress, { backgroundColor: c.border }]}>
-            <RNView
-              style={[styles.progressFill, { backgroundColor: c.accent, width: `${(tickedCount / state.list.length) * 100}%` }]}
-            />
-          </RNView>
-        </RNView>
-      ) : null}
 
       {state.list.length ? (
         <PriceSummary totals={totals} status={prices.status} updated={prices.data?.updated ?? null} staples={stapleCount}
@@ -178,22 +157,55 @@ export default function ShoppingListScreen() {
         />
       ) : null}
 
+      <RNView style={styles.gap}>
+        {state.list.length ? (
+          <>
+            <RNView style={styles.spread}>
+              <Text variant="label" accessibilityRole="header">YOUR LIST</Text>
+              <Text variant="muted" style={styles.small} accessibilityLiveRegion="polite">
+                {tickedCount === state.list.length
+                  ? `All ${state.list.length} ticked off. Nice work!`
+                  : `${tickedCount} of ${state.list.length} ticked off`}
+              </Text>
+            </RNView>
+            <RNView style={[styles.progress, { backgroundColor: c.border }]}>
+              <RNView
+                style={[styles.progressFill, { backgroundColor: c.accent, width: `${(tickedCount / state.list.length) * 100}%` }]}
+              />
+            </RNView>
+          </>
+        ) : null}
+        <RNView style={[styles.row, { flexWrap: 'nowrap' }]}>
+          <TextInput
+            value={newItem}
+            onChangeText={setNewItem}
+            placeholder="Add an item"
+            accessibilityLabel="Add an item"
+            style={{ flex: 1, minWidth: 0 }}
+            returnKeyType="done"
+            onSubmitEditing={addItem}
+          />
+          <Button title="Add" onPress={addItem} />
+        </RNView>
+      </RNView>
+
       {aisles.map((aisle) => {
         const items = inAisle(aisle);
         const left = items.filter((i) => !i.checked).length;
         return (
           <RNView key={aisle} style={styles.gap}>
-            <RNView style={styles.aisleHeader}>
+            <RNView style={styles.spread}>
               <Text variant="label" accessibilityRole="header">{AISLE_LABELS[aisle].toUpperCase()}</Text>
-              <Text variant="muted" style={left === 0 ? { color: c.accent } : undefined}>
+              <Text variant="muted" style={[styles.small, left === 0 ? { color: c.accent } : undefined]}>
                 {left === 0 ? 'All done ✓' : `${left} to get`}
               </Text>
             </RNView>
             <Card style={{ paddingVertical: 4 }}>
-              {items.map((item) => (
+              {items.map((item, i) => (
                 <Row
                   key={item.id}
                   item={item}
+                  last={i === items.length - 1}
                   staple={isStaple(item)}
                   amount={amount(item.quantity, item.unit)}
                   editing={editingId === item.id}
@@ -204,6 +216,7 @@ export default function ShoppingListScreen() {
                   data={prices.data}
                   coveredByName={costs.get(item.id)?.coveredBy ? nameOf(costs.get(item.id)!.coveredBy!) : null}
                   priceOpen={priceOpenId === item.id}
+                  showPrice={!isStaple(item) || !!costs.get(item.id)?.chosen}
                   onTogglePrice={() => setPriceOpenId(priceOpenId === item.id ? null : item.id)}
                 />
               ))}
@@ -245,6 +258,8 @@ function lineCostFor(
 
 function Row({
   item,
+  last,
+  showPrice,
   staple,
   amount,
   editing,
@@ -258,6 +273,8 @@ function Row({
   onTogglePrice,
 }: {
   item: ListItem;
+  last: boolean;
+  showPrice: boolean;
   staple: boolean;
   amount: string;
   editing: boolean;
@@ -277,7 +294,7 @@ function Row({
   const [unit, setUnit] = useState(item.unit ?? '');
 
   return (
-    <RNView style={[styles.item, { borderBottomColor: c.border }]}>
+    <RNView style={[styles.item, { borderBottomColor: c.border, borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth }]}>
       <RNView style={styles.itemRow}>
         <Pressable
           accessibilityRole="checkbox"
@@ -288,26 +305,30 @@ function Row({
           style={[styles.check, { borderColor: c.accent, backgroundColor: item.checked ? c.accent : 'transparent' }]}>
           {item.checked ? <Text style={{ color: c.onTint, fontSize: 14 }}>✓</Text> : null}
         </Pressable>
-        <Pressable style={{ flex: 1 }} onPress={onEdit}>
+        <Pressable style={styles.itemText} onPress={onEdit} accessibilityHint="Edit this item">
           <Text style={item.checked ? { textDecorationLine: 'line-through', color: c.textMuted } : undefined}>
             {amount ? <Text style={{ fontWeight: '600' }}>{amount} </Text> : null}
             {item.name}
           </Text>
-          {staple ? <Text variant="muted" style={{ color: c.accent }}>Pantry staple: check the cupboard first</Text> : null}
-          {item.sources.length ? <Text variant="muted">{item.sources.join(', ')}</Text> : null}
+          {staple ? <Text variant="muted" style={[styles.small, { color: c.accent }]}>Pantry staple: check the cupboard first</Text> : null}
+          {item.sources.length ? (
+            <Text variant="muted" style={styles.small} numberOfLines={editing ? undefined : 1}>
+              {item.sources.join(', ')}
+            </Text>
+          ) : null}
+          {cost.coveredBy ? (
+            <Text variant="muted" style={styles.small}>
+              ✨ Bought with {coveredByName ?? 'another item'}
+              {cost.aiBuy ? ` (${cost.aiBuy})` : ''}
+            </Text>
+          ) : cost.aiBuy ? (
+            <Text variant="muted" style={styles.small}>
+              ✨ Buy {cost.aiBuy}
+            </Text>
+          ) : null}
         </Pressable>
+        {showPrice ? <PriceTag cost={cost} open={priceOpen} onToggle={onTogglePrice} /> : null}
       </RNView>
-      {cost.woolies || cost.coles || cost.coveredBy || priceOpen ? (
-        <RNView style={styles.priceIndent}>
-          <PriceLine
-            cost={cost}
-            coveredByName={coveredByName}
-            open={priceOpen}
-            onToggle={onTogglePrice}
-            onPickStore={(store) => dispatch({ type: 'pickStore', id: item.id, store })}
-          />
-        </RNView>
-      ) : null}
       {priceOpen ? (
         <PricePanel
           name={item.name}
@@ -369,11 +390,12 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 16, paddingBottom: 48, maxWidth: 760, width: '100%', alignSelf: 'center' },
   gap: { gap: 8 },
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
-  item: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, gap: 8 },
+  item: { paddingVertical: 10, gap: 10 },
   itemRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
-  aisleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 },
+  itemText: { flex: 1, minWidth: 0, gap: 2 },
+  spread: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' },
+  small: { fontSize: 13, lineHeight: 18 },
   progress: { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: 6, borderRadius: 3 },
-  priceIndent: { paddingLeft: 40 },
   check: { width: 28, height: 28, borderRadius: 8, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
 });

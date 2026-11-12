@@ -79,43 +79,52 @@ export function PriceSummary({
   if (staples) notes.push(`Pantry staples aren’t counted (${staples}).`);
   if (totals.unpriced) notes.push(`${totals.unpriced} ${totals.unpriced === 1 ? 'item has' : 'items have'} no price.`);
   return (
-    <Card style={styles.gap}>
-      <Text variant="label">ESTIMATED COST</Text>
-      <RNView style={styles.totalRow}>
-        <Text variant="title" accessibilityLabel={`About ${money(totals.chosen)}`}>
-          {money(totals.chosen)}
-        </Text>
-        <Text variant="muted" style={{ flexShrink: 1 }}>
-          at the store picked for each item
-        </Text>
+    <Card style={styles.summary}>
+      <RNView style={styles.gap}>
+        <Text variant="label">ESTIMATED COST</Text>
+        <RNView style={styles.totalRow}>
+          <Text variant="title" accessibilityLabel={`About ${money(totals.chosen)}`}>
+            {money(totals.chosen)}
+          </Text>
+          <Text variant="muted" style={{ flexShrink: 1 }}>
+            at the store picked for each item
+          </Text>
+        </RNView>
+        <RNView style={styles.storeTotals}>
+          {STORES.map((s) => (
+            <RNView
+              key={s}
+              style={[
+                styles.storeTotal,
+                { borderColor: cheaper === s ? c.accent : c.border, backgroundColor: c.background },
+              ]}>
+              <RNView style={styles.storeTotalTop}>
+                <Text variant="muted" style={{ fontSize: 13 }}>
+                  All at {STORE_SHORT[s]}
+                </Text>
+                <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 16 }}>{money(totals[s])}</Text>
+              </RNView>
+              {cheaper === s ? (
+                <Text variant="muted" style={{ color: c.accent, fontFamily: Fonts.bodyBold, fontSize: 12 }}>
+                  Cheaper by {money(Math.abs(totals.woolies - totals.coles))}
+                </Text>
+              ) : totals.missing[s] ? (
+                <Text variant="muted" style={{ fontSize: 12 }}>
+                  {totals.missing[s]} not found
+                </Text>
+              ) : null}
+            </RNView>
+          ))}
+        </RNView>
       </RNView>
-      <RNView style={styles.storeTotals}>
-        {STORES.map((s) => (
-          <RNView
-            key={s}
-            style={[
-              styles.storeTotal,
-              { borderColor: cheaper === s ? c.accent : c.border, backgroundColor: c.background },
-            ]}>
-            <Text variant="muted">All at {STORE_SHORT[s]}</Text>
-            <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 18 }}>{money(totals[s])}</Text>
-            {cheaper === s ? (
-              <Text variant="muted" style={{ color: c.accent, fontFamily: Fonts.bodyBold }}>
-                Cheaper by {money(Math.abs(totals.woolies - totals.coles))}
-              </Text>
-            ) : totals.missing[s] ? (
-              <Text variant="muted">{totals.missing[s]} not found</Text>
-            ) : null}
-          </RNView>
-        ))}
-      </RNView>
-      <AiPicks ai={ai} />
       <CheapestMix totals={totals} onUse={onUseCheapest} />
-      {notes.length ? <Text variant="muted">{notes.join(' ')}</Text> : null}
-      <Text variant="muted" style={{ fontSize: 12 }}>
-        Online prices from hotprices.org{updated ? `, ${dateText(updated)}` : ''}. Your store may differ. Costs count
-        whole packs.
-      </Text>
+      <AiPicks ai={ai} />
+      <RNView style={[styles.section, { borderTopColor: c.border }]}>
+        <Text variant="muted" style={styles.small}>
+          {notes.length ? `${notes.join(' ')} ` : ''}Online prices from hotprices.org{updated ? `, ${dateText(updated)}` : ''}.
+          Your store may differ. Costs count whole packs.
+        </Text>
+      </RNView>
     </Card>
   );
 }
@@ -137,34 +146,42 @@ function AiPicks({ ai }: { ai: AiControls }) {
   const c = useTheme();
   const asked = ai.answered > 0;
   return (
-    <RNView style={[styles.mix, { borderColor: c.border }]}>
-      <Text variant="label">✨ AI PICKS (GEMINI)</Text>
-      <Text variant="muted">
-        {!asked
-          ? 'Let Gemini choose sensible products and pack sizes, like one garlic bulb for 4 cloves, and buy items that are the same thing once.'
-          : ai.stale
-            ? `Gemini picked for ${ai.answered} ${ai.answered === 1 ? 'item' : 'items'}. ${ai.stale} ${ai.stale === 1 ? 'is' : 'are'} new or changed since.`
-            : `Gemini picked for ${ai.answered === 1 ? 'the one item' : `all ${ai.answered} items`}. Your own picks still come first.`}
-      </Text>
-      {ai.busy ? (
-        <RNView style={styles.row} accessibilityLiveRegion="polite">
+    <RNView style={[styles.section, { borderTopColor: c.border }]}>
+      <RNView style={styles.sectionHead}>
+        <Text variant="label" style={{ flexShrink: 1 }}>
+          ✨ AI PICKS (GEMINI)
+        </Text>
+        {ai.busy ? (
           <ActivityIndicator color={c.tint} />
-          <Text variant="muted">Asking Gemini… this takes a few seconds.</Text>
-        </RNView>
-      ) : (
+        ) : !asked || ai.stale ? (
+          <Chip
+            small
+            selected={ai.canAsk}
+            label={!asked ? 'Pick with AI' : 'Update AI picks'}
+            onPress={() => {
+              if (ai.canAsk) ai.onAsk();
+            }}
+          />
+        ) : (
+          <Chip small label="Turn off" selected={false} onPress={ai.onForget} />
+        )}
+      </RNView>
+      <Text variant="muted" style={styles.small} accessibilityLiveRegion="polite">
+        {ai.busy
+          ? 'Asking Gemini… this takes a few seconds.'
+          : !asked
+            ? 'Let Gemini choose sensible products and pack sizes, like one garlic bulb for 4 cloves, and buy items that are the same thing once.'
+            : ai.stale
+              ? `Gemini picked for ${ai.answered} ${ai.answered === 1 ? 'item' : 'items'}. ${ai.stale} ${ai.stale === 1 ? 'is' : 'are'} new or changed since.`
+              : `Gemini picked for ${ai.answered === 1 ? 'the one item' : `all ${ai.answered} items`}. Your own picks still come first.`}
+      </Text>
+      {asked && ai.stale && !ai.busy ? (
         <RNView style={styles.row}>
-          {!asked || ai.stale ? (
-            <Button
-              title={!asked ? 'Pick with AI' : 'Update AI picks'}
-              onPress={ai.onAsk}
-              disabled={!ai.canAsk}
-            />
-          ) : null}
-          {asked ? <Chip small label="Turn off AI picks" selected={false} onPress={ai.onForget} /> : null}
+          <Chip small label="Turn off AI picks" selected={false} onPress={ai.onForget} />
         </RNView>
-      )}
+      ) : null}
       {ai.error ? (
-        <Text style={{ color: c.tint }} accessibilityLiveRegion="polite">
+        <Text style={[styles.small, { color: c.tint }]} accessibilityLiveRegion="polite">
           {ai.error} The list is using the built-in matching.
         </Text>
       ) : null}
@@ -178,110 +195,83 @@ function CheapestMix({ totals, onUse }: { totals: ListTotals; onUse: () => void 
   const onIt = totals.chosen <= totals.cheapest + 0.005;
   const saves = STORES.filter((s) => totals.savings[s] >= 0.005);
   return (
-    <RNView style={[styles.mix, { borderColor: c.accent }]}>
-      <RNView style={styles.totalRow}>
+    <RNView style={[styles.section, { borderTopColor: c.border }]}>
+      <RNView style={styles.sectionHead}>
         <Text variant="label" style={{ color: c.accent }}>
           CHEAPEST OVERALL
         </Text>
-        <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 18 }}>{money(totals.cheapest)}</Text>
+        <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 16 }}>{money(totals.cheapest)}</Text>
       </RNView>
-      <Text variant="muted">
-        {saves.length
-          ? `Saves ${saves
-              .map((s) => `${money(totals.savings[s])} compared with all at ${STORE_SHORT[s]}`)
-              .join(', and ')}.`
-          : 'One store is cheapest for everything, so splitting the shop saves nothing.'}
-      </Text>
       {onIt ? (
-        <Text style={{ color: c.accent, fontFamily: Fonts.bodyBold }} accessibilityLiveRegion="polite">
+        <Text style={[styles.small, { color: c.accent, fontFamily: Fonts.bodyBold }]} accessibilityLiveRegion="polite">
           ✓ Your list is on the cheapest mix
         </Text>
-      ) : (
-        <>
-          <Button title={`Use cheapest (save ${money(totals.chosen - totals.cheapest)})`} onPress={onUse} />
-          <Text variant="muted" style={{ fontSize: 12 }}>
-            Keeps the products you picked; only the store changes.
-          </Text>
-        </>
-      )}
+      ) : null}
+      <Text variant="muted" style={styles.small}>
+        {saves.length
+          ? `Saves ${saves.map((s) => `${money(totals.savings[s])} compared with all at ${STORE_SHORT[s]}`).join(', and ')}.`
+          : 'One store is cheapest for everything, so splitting the shop saves nothing.'}
+        {onIt ? '' : ' Keeps the products you picked; only the store changes.'}
+      </Text>
+      {onIt ? null : <Button title={`Use cheapest (save ${money(totals.chosen - totals.cheapest)})`} onPress={onUse} />}
     </RNView>
   );
 }
 
-/** The two prices under a list line. Tapping one buys it there; "Compare" opens the panel. */
-export function PriceLine({
+/**
+ * The prices on the right of a list line: the store it's bought at, with the
+ * other store underneath. Tapping it opens the panel to pick a store, product or size.
+ */
+export function PriceTag({
   cost,
-  coveredByName,
   open,
-  onPickStore,
   onToggle,
 }: {
   cost: LineCost;
-  /** The item this one is bought with, when Gemini says they're the same thing. */
-  coveredByName?: string | null;
   open: boolean;
-  onPickStore: (store: StoreId) => void;
   onToggle: () => void;
 }) {
   const c = useTheme();
-  const toggle = (
+  const first: StoreId = cost.chosen ?? 'woolies';
+  const order = cost.coveredBy ? [] : STORES.slice().sort((a, b) => Number(b === first) - Number(a === first));
+  const label = cost.coveredBy
+    ? 'Bought with another item. Compare sizes'
+    : `${STORES.map((s) => `${STORE_NAMES[s]} ${cost[s] ? money(cost[s]!.cost) : 'not found'}`).join(', ')}. ${open ? 'Close sizes' : 'Compare sizes'}`;
+  const priced = !!(cost.woolies || cost.coles);
+  return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ expanded: open }}
+      accessibilityLabel={label}
       onPress={onToggle}
-      hitSlop={8}
-      style={({ pressed }) => [styles.compare, { opacity: pressed ? 0.6 : 1 }]}>
-      <Text style={[styles.pillText, { color: c.tint }]}>{open ? 'Close' : 'Sizes'}</Text>
-    </Pressable>
-  );
-  if (cost.coveredBy) {
-    return (
-      <RNView style={styles.priceLine}>
-        <Text variant="muted" style={{ flexShrink: 1 }}>
-          ✨ Bought with {coveredByName ?? 'another item'}
-          {cost.aiBuy ? ` (${cost.aiBuy})` : ''}
-        </Text>
-        {toggle}
-      </RNView>
-    );
-  }
-  return (
-    <RNView style={styles.gap}>
-      {cost.aiBuy ? (
+      hitSlop={6}
+      style={({ pressed }) => [styles.tag, { opacity: pressed ? 0.6 : 1 }]}>
+      {cost.coveredBy ? (
         <Text variant="muted" style={{ fontSize: 13 }}>
-          ✨ Buy {cost.aiBuy}
+          ✨ Included
         </Text>
-      ) : null}
-      <RNView style={styles.priceLine}>
-        {STORES.map((s) => {
+      ) : priced ? (
+        order.map((s, i) => {
           const sc = cost[s];
           const chosen = cost.chosen === s;
           return (
-            <Pressable
+            <Text
               key={s}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: chosen, disabled: !sc }}
-              accessibilityLabel={sc ? `${STORE_NAMES[s]} ${money(sc.cost)}` : `${STORE_NAMES[s]}: not found`}
-              disabled={!sc}
-              onPress={() => onPickStore(s)}
-              hitSlop={4}
-              style={({ pressed }) => [
-                styles.pricePill,
-                {
-                  borderColor: chosen ? c.accent : c.border,
-                  backgroundColor: chosen ? c.accent : 'transparent',
-                  opacity: pressed ? 0.7 : 1,
-                },
-              ]}>
-              <Text style={[styles.pillText, { color: chosen ? c.onTint : sc ? c.text : c.textMuted }]}>
-                {STORE_SHORT[s]} {sc ? money(sc.cost) : '–'}
-              </Text>
-            </Pressable>
+              numberOfLines={1}
+              style={
+                chosen
+                  ? { fontFamily: Fonts.bodyBold, fontSize: 14, color: c.accent }
+                  : { fontFamily: Fonts.body, fontSize: i === 0 ? 14 : 12, color: c.textMuted }
+              }>
+              {STORE_SHORT[s]} {sc ? money(sc.cost) : '–'}
+            </Text>
           );
-        })}
-        {toggle}
-      </RNView>
-    </RNView>
+        })
+      ) : null}
+      <Text style={[styles.tagLink, { color: c.tint }]}>
+        {open ? 'Close ▴' : priced || cost.coveredBy ? 'Sizes ▾' : 'Find price ▾'}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -364,7 +354,7 @@ export function PricePanel({
             {sc ? (
               <Text variant="muted">
                 {sc.picked ? 'Your pick' : sc.ai ? 'Gemini’s pick' : 'Suggested'}: {sc.product.name}, {formatSize(sc.product)}
-                {sc.packs > 1 ? ` × ${sc.packs}` : ''} = {money(sc.cost)}
+                {sc.packs > 1 ? ` × ${sc.packs}` : ''} = {money(sc.cost)} ({formatUnitPrice(sc.product)})
               </Text>
             ) : (
               <Text variant="muted">Nothing picked at {STORE_SHORT[s]} yet.</Text>
@@ -435,12 +425,14 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
   totalRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' },
   storeTotals: { flexDirection: 'row', gap: 8 },
-  mix: { borderWidth: 1.5, borderRadius: 12, padding: 12, gap: 8 },
-  storeTotal: { flex: 1, minWidth: 0, borderWidth: 1.5, borderRadius: 12, padding: 10, gap: 2 },
-  priceLine: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 },
-  pricePill: { borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 10, minHeight: 30, justifyContent: 'center' },
-  pillText: { fontFamily: Fonts.bodyMedium, fontSize: 13 },
-  compare: { minHeight: 30, justifyContent: 'center', paddingHorizontal: 4 },
+  summary: { gap: 14 },
+  section: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12, gap: 6 },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, minHeight: 32 },
+  small: { fontSize: 13, lineHeight: 18 },
+  storeTotal: { flex: 1, minWidth: 0, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, gap: 2 },
+  storeTotalTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 4, flexWrap: 'wrap' },
+  tag: { alignItems: 'flex-end', justifyContent: 'center', minWidth: 76, minHeight: 44, gap: 1 },
+  tagLink: { fontFamily: Fonts.bodyMedium, fontSize: 12, marginTop: 2 },
   panel: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12, gap: 12 },
   storeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   options: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, overflow: 'hidden' },
