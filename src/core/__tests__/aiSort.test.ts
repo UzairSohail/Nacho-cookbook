@@ -307,7 +307,8 @@ describe('Gemini speed settings', () => {
   it('asks once more without the thinking setting on any 400, then moves on, saying why', async () => {
     const bad = vi.fn(async () => new Response('{"error":{"message":"API key not valid"}}', { status: 400 })) as unknown as typeof fetch;
     await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: bad })).rejects.toThrow(/gemini-flash-lite-latest: 400 API key not valid/);
-    expect(bad).toHaveBeenCalledTimes(6);
+    // Four models, each asked twice; a refused request isn't retried in the second round.
+    expect(bad).toHaveBeenCalledTimes(8);
   });
 
   it('uses Flash-Lite when it refuses the thinking setting with a plain invalid argument', async () => {
@@ -333,7 +334,7 @@ describe('checkGemini', () => {
 });
 
 describe('Gemini model fallback', () => {
-  it('tries Flash when Flash-Lite is overloaded', async () => {
+  it('tries the next model when Flash-Lite is overloaded', async () => {
     const asked: string[] = [];
     const fetchImpl = vi.fn(async (u: string) => {
       asked.push(u.split('/models/')[1].split(':')[0]);
@@ -343,13 +344,59 @@ describe('Gemini model fallback', () => {
     }) as unknown as typeof fetch;
     const r = await sortWithGemini('caption', '', { apiKey: 'k', fetchImpl });
     expect(r.title).toBe('Crispy chilli beef');
-    expect(asked).toEqual(['gemini-flash-lite-latest', 'gemini-flash-latest']);
+    expect(asked).toEqual(['gemini-flash-lite-latest', 'gemini-3.1-flash-lite']);
   });
 
   it('lists what each model said when none can answer', async () => {
     const down = vi.fn(async () => new Response('{"error":{"message":"high demand"}}', { status: 503 })) as unknown as typeof fetch;
-    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: down })).rejects.toThrow(
-      /gemini-flash-lite-latest: 503 high demand; gemini-flash-latest: 503/,
+    await expect(sortWithGemini('x', '', { apiKey: 'k', fetchImpl: down, retryPauseMs: 0 })).rejects.toThrow(
+      /gemini-flash-lite-latest: 503 high demand; gemini-3.1-flash-lite: 503/,
     );
+    // Busy models get a second round.
+    expect(down).toHaveBeenCalledTimes(8);
+  });
+
+  it('gives busy models a second go, but not retired ones', async () => {
+    const asked: string[] = [];
+    let busy = 3;
+    const fetchImpl = vi.fn(async (u: string) => {
+      const name = u.split('/models/')[1].split(':')[0];
+      asked.push(name);
+      if (name === 'gemini-flash-latest') return new Response('{"error":{"message":"no longer available"}}', { status: 404 });
+      if (busy-- > 0) return new Response('{"error":{"message":"high demand"}}', { status: 503 });
+      return geminiReply(answer);
+    }) as unknown as typeof fetch;
+    const r = await sortWithGemini('caption', '', { apiKey: 'k', fetchImpl, retryPauseMs: 0 });
+    expect(r.title).toBe('Crispy chilli beef');
+    expect(asked).toEqual([
+      'gemini-flash-lite-latest', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview', 'gemini-flash-latest',
+      'gemini-flash-lite-latest',
+    ]);
+  });
+
+  it('falls back to Groq when every Gemini model is busy', async () => {
+    const groqBodies: { model: string; messages: { content: string }[]; response_format: unknown }[] = [];
+    const fetchImpl = vi.fn(async (u: string, init: RequestInit) => {
+      if (u.includes('api.groq.com')) {
+        groqBodies.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(answer) } }] }));
+      }
+      return new Response('{"error":{"message":"high demand"}}', { status: 503 });
+    }) as unknown as typeof fetch;
+    const r = await sortWithGemini('the caption', '', { apiKey: 'k', groqApiKey: 'g', fetchImpl, retryPauseMs: 0 });
+    expect(r.title).toBe('Crispy chilli beef');
+    expect(groqBodies).toHaveLength(1);
+    expect(groqBodies[0].model).toBe('llama-3.3-70b-versatile');
+    expect(groqBodies[0].response_format).toEqual({ type: 'json_object' });
+    expect(groqBodies[0].messages[0].content).toMatch(/ingredientGroups/);
+    expect(groqBodies[0].messages[1].content).toContain('the caption');
+  });
+
+  it('works with only a Groq key, and says what Groq said when it fails too', async () => {
+    const ok = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(answer) } }] }))) as unknown as typeof fetch;
+    expect((await sortWithGemini('x', '', { groqApiKey: 'g', fetchImpl: ok })).title).toBe('Crispy chilli beef');
+    expect(ok).toHaveBeenCalledTimes(1);
+    const down = vi.fn(async () => new Response('{"error":{"message":"rate limited"}}', { status: 429 })) as unknown as typeof fetch;
+    await expect(sortWithGemini('x', '', { groqApiKey: 'g', fetchImpl: down })).rejects.toMatchObject({ code: 'busy' });
   });
 });

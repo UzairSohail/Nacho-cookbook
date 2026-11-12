@@ -150,10 +150,23 @@ export function recipeFromAnswer(answer: string, sourceUrl = ''): ImportedRecipe
 
 /**
  * Models tried in turn when one is overloaded (503), out of free allowance
- * (429), unknown (404) or too slow. Free-tier Flash is often "experiencing
- * high demand", and Flash-Lite is quick and good enough for sorting.
+ * (429), retired (404) or too slow. Free-tier models are often "experiencing
+ * high demand"; Flash-Lite is quick and good enough for this. Checked live
+ * 2026-11-12: gemini-3.1-flash-lite and gemini-3-flash-preview answer;
+ * gemini-2.5-flash, 2.5-flash-lite and 2.0-flash are gone (404) for new keys.
  */
-export const FALLBACK_GEMINI_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash'];
+export const FALLBACK_GEMINI_MODELS = ['gemini-3.1-flash-lite', 'gemini-3-flash-preview', 'gemini-flash-latest'];
+
+/** Busy models get a second go after this pause (a demand spike often passes in seconds). */
+const RETRY_PAUSE_MS = 2_000;
+
+/**
+ * Groq's free tier, used when every Gemini model fails and the GROQ_API_KEY
+ * secret is set (console.groq.com/keys). Override with the GROQ_MODEL secret.
+ */
+export const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+/** Time kept back for Groq when Gemini is struggling. */
+const GROQ_RESERVE_MS = 15_000;
 
 /** The longest one model gets before the next is tried. */
 const PER_MODEL_TIMEOUT_MS = 20_000;
@@ -165,6 +178,11 @@ export interface GeminiOptions {
   apiKey?: string;
   model?: string;
   fetchImpl?: typeof fetch;
+  /** Groq, tried when Gemini can't answer. */
+  groqApiKey?: string;
+  groqModel?: string;
+  /** Pause before busy models are retried (tests set 0). */
+  retryPauseMs?: number;
 }
 
 /** Asks Gemini to sort the text, trying the fallback models in turn. `fetchImpl` is for tests. */
@@ -185,18 +203,20 @@ export async function askGemini<T>(
   parse: (answer: string) => T,
   options: GeminiOptions = {},
 ): Promise<T> {
-  const { apiKey, model = DEFAULT_GEMINI_MODEL, fetchImpl = fetch } = options;
-  if (!apiKey) throw new AiSortError('AI sorting is not set up yet.', 'not-configured');
+  const { apiKey, model = DEFAULT_GEMINI_MODEL, fetchImpl = fetch, groqApiKey, retryPauseMs = RETRY_PAUSE_MS } = options;
+  if (!apiKey && !groqApiKey) throw new AiSortError('AI sorting is not set up yet.', 'not-configured');
+  // With Groq to fall back on, Gemini gets less of the time.
+  const geminiBudget = groqApiKey ? GEMINI_TIMEOUT_MS - GROQ_RESERVE_MS : GEMINI_TIMEOUT_MS;
   const models = [...new Set([model, ...FALLBACK_GEMINI_MODELS])];
   const started = Date.now();
   const problems: string[] = [];
 
   const ask = async (name: string, thinking: boolean) => {
-    const left = GEMINI_TIMEOUT_MS - (Date.now() - started);
+    const left = geminiBudget - (Date.now() - started);
     try {
       return await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(name)}:generateContent`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey ?? '' },
         body: JSON.stringify(request(thinking)),
         signal: AbortSignal.timeout(Math.max(3_000, Math.min(PER_MODEL_TIMEOUT_MS, left))),
       });
@@ -234,19 +254,83 @@ export async function askGemini<T>(
     return parse(answer);
   };
 
-  for (const name of models) {
-    if (Date.now() - started > GEMINI_TIMEOUT_MS - 3_000) break;
+  // Two rounds: models that were only busy get a second go after a short pause.
+  const gone = new Set<string>();
+  for (let round = 0; round < 2 && apiKey; round += 1) {
+    const left = models.filter((m) => !gone.has(m));
+    if (!left.length) break;
+    if (round > 0) {
+      if (Date.now() - started + retryPauseMs > geminiBudget - 5_000) break;
+      await new Promise((r) => setTimeout(r, retryPauseMs));
+    }
+    for (const name of left) {
+      if (Date.now() - started > geminiBudget - 3_000) break;
+      try {
+        return await sortWith(name);
+      } catch (e) {
+        if (!(e instanceof TryNextModel)) throw e;
+        problems.push(`${name}: ${e.message}`);
+        // Retired or refused models won't come back in a few seconds.
+        if (/^(404|400)/.test(e.message)) gone.add(name);
+      }
+    }
+  }
+  if (groqApiKey) {
     try {
-      return await sortWith(name);
+      return parse(await askGroq(request(true), { apiKey: groqApiKey, model: options.groqModel, fetchImpl, ms: GEMINI_TIMEOUT_MS + 5_000 - (Date.now() - started) }));
     } catch (e) {
-      if (!(e instanceof TryNextModel)) throw e;
-      problems.push(`${name}: ${e.message}`);
+      if (e instanceof AiSortError) throw e;
+      problems.push(`groq: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200));
     }
   }
   const seconds = Math.round((Date.now() - started) / 1000);
   if (problems.length && problems.every((p) => /: 429/.test(p)))
     throw new AiSortError('The free Gemini allowance is used up for now.', 'busy');
   throw new AiSortError(`Gemini couldn't answer after ${seconds}s (${problems.join('; ')}).`, 'failed');
+}
+
+/**
+ * Asks Groq (OpenAI-style API) the same thing as a Gemini request: its
+ * instructions, its text, and its answer schema written into the prompt
+ * (Groq's JSON mode takes no schema). Returns the JSON text.
+ */
+export async function askGroq(
+  geminiBody: unknown,
+  opts: { apiKey: string; model?: string; fetchImpl?: typeof fetch; ms?: number },
+): Promise<string> {
+  const body = geminiBody as {
+    systemInstruction?: { parts?: { text?: string }[] };
+    contents?: { parts?: { text?: string }[] }[];
+    generationConfig?: { responseSchema?: unknown };
+  };
+  const system = body.systemInstruction?.parts?.map((p) => p.text ?? '').join('\n') ?? '';
+  const user = body.contents?.map((c) => c.parts?.map((p) => p.text ?? '').join('\n')).join('\n\n') ?? '';
+  const schema = body.generationConfig?.responseSchema;
+  const res = await (opts.fetchImpl ?? fetch)('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${opts.apiKey}` },
+    body: JSON.stringify({
+      model: opts.model || DEFAULT_GROQ_MODEL,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `${system}${schema ? `\n\nAnswer with one JSON object only, in this shape (an OpenAPI-style schema; give every required field): ${JSON.stringify(schema)}` : ''}`,
+        },
+        { role: 'user', content: user },
+      ],
+    }),
+    signal: AbortSignal.timeout(Math.max(8_000, opts.ms ?? 30_000)),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`${res.status} ${/"message":\s*"([^"]+)"/.exec(detail)?.[1]?.slice(0, 80) ?? ''}`.trim());
+  }
+  const data = (await res.json().catch(() => null)) as { choices?: { message?: { content?: string } }[] } | null;
+  const answer = data?.choices?.[0]?.message?.content ?? '';
+  if (!answer) throw new Error('no answer');
+  return answer;
 }
 
 /**
