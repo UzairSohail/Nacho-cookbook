@@ -179,7 +179,12 @@ export async function searchPexels(query: string, apiKey: string, fetchImpl: typ
 }
 
 /** Wikimedia Commons search (no key). Only photos (JPEG/PNG/WebP) big enough for a cover. */
-export async function searchWikimedia(query: string, fetchImpl: typeof fetch = fetch): Promise<PhotoCandidate[]> {
+export async function searchWikimedia(
+  query: string,
+  fetchImpl: typeof fetch = fetch,
+  /** For the health check: what Commons sent and why files were left out. */
+  report?: { asks: number; files: number; skipped: string[]; continued: string[] },
+): Promise<PhotoCandidate[]> {
   const params = new URLSearchParams({
     action: 'query',
     format: 'json',
@@ -220,17 +225,27 @@ export async function searchWikimedia(query: string, fetchImpl: typeof fetch = f
     }
     // Only continue the image details, not on to the next page of search results.
     more = data.continue && 'iicontinue' in data.continue ? data.continue : undefined;
+    if (report) {
+      report.asks += 1;
+      report.continued.push(Object.keys(data.continue ?? {}).join(',') || 'none');
+    }
     if (!more) break;
   }
   const meta = (m: Meta | undefined, key: string) => (typeof m?.[key]?.value === 'string' ? stripHtml(m[key]!.value as string) : '');
+  if (report) report.files = pages.size;
   return [...pages.values()]
     .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
     .flatMap((p) => {
       const info = p.imageinfo?.[0];
       const url = info?.thumburl || info?.url;
-      if (!info || !url || !/^https:\/\/upload\.wikimedia\.org\//.test(url)) return [];
-      if (!/^image\/(jpeg|png|webp)$/.test(info.mime ?? '')) return [];
-      if ((info.width ?? 0) < 600 || (info.height ?? 0) < 400) return [];
+      const skip = (why: string) => {
+        report?.skipped.push(`${(p.title ?? '?').slice(0, 60)}: ${why}`);
+        return [];
+      };
+      if (!info || !url) return skip('no image details');
+      if (!/^https:\/\/upload\.wikimedia\.org\//.test(url)) return skip(`address ${url.slice(0, 60)}`);
+      if (!/^image\/(jpeg|png|webp)$/.test(info.mime ?? '')) return skip(info.mime ?? 'no type');
+      if ((info.width ?? 0) < 600 || (info.height ?? 0) < 400) return skip(`${info.width}x${info.height}`);
       const name = (p.title ?? '').replace(/^File:/, '').replace(/\.[a-z]+$/i, '').replace(/[_-]+/g, ' ');
       const about = meta(info.extmetadata, 'ImageDescription') || meta(info.extmetadata, 'ObjectName');
       const artist = meta(info.extmetadata, 'Artist').slice(0, 80);
@@ -321,11 +336,17 @@ export async function findRecipePhoto(title: string, ingredients: string[], opti
 export async function checkPhotoSources(options: PhotoOptions = {}) {
   const started = Date.now();
   const { found, problems } = await searchPhotos('lasagna', options);
+  const report = { asks: 0, files: 0, skipped: [] as string[], continued: [] as string[] };
+  const commons = await searchWikimedia('lasagna', options.fetchImpl ?? fetch, report).catch((e) => {
+    report.skipped.push(`failed: ${e instanceof Error ? e.message : String(e)}`.slice(0, 150));
+    return [] as PhotoCandidate[];
+  });
   return {
     pexelsKeySet: !!options.pexelsApiKey,
     pexels: found.filter((f) => f.source === 'pexels').length,
     wikimedia: found.filter((f) => f.source === 'wikimedia').length,
     problems,
     ms: Date.now() - started,
+    wikimediaDetail: { ...report, kept: commons.map((c) => c.description.slice(0, 80)) },
   };
 }
