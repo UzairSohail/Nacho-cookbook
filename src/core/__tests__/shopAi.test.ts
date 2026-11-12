@@ -118,9 +118,22 @@ describe('reading the answer', () => {
     expect(plan.b.coveredBy).toBeUndefined();
   });
 
+  it('reads loosely shaped answers: refs with names, bare numbers, a bare array, or by position', () => {
+    const loose = JSON.stringify([
+      { line: 'L1: garlic', sameAs: '', buy: '1 bulb', woolies: 'W1 Woolworths Garlic Bulb', wooliesPacks: '1', coles: '1', colesPacks: 1 },
+      { line: 'garlic cloves', sameAs: 'L1', buy: '', woolies: '', wooliesPacks: 0, coles: '', colesPacks: 0 },
+      { line: '', sameAs: '', buy: '1 bottle', woolies: 'Lemons Loose', wooliesPacks: 2, coles: '', colesPacks: 0 },
+    ]);
+    const plan = planFromAnswer(loose, request);
+    expect(plan.a).toMatchObject({ woolies: { productId: 'w1', packs: 1 }, coles: { productId: 'c1' } });
+    expect(plan.b.coveredBy).toBe('a');
+    expect(plan.c.woolies).toEqual({ productId: 'w5', packs: 2 });
+    expect(Object.keys(planFromAnswer(JSON.stringify({ items: [{ line: '1', woolies: 'W2' }] }), request))).toEqual(['a']);
+  });
+
   it('throws on unreadable answers', () => {
     expect(() => planFromAnswer('nope', request)).toThrow();
-    expect(() => planFromAnswer('{"lines":[]}', request)).toThrow();
+    expect(() => planFromAnswer('{"lines":[]}', request)).toThrow(/no list lines: \{"lines":\[\]\}/);
   });
 });
 
@@ -216,9 +229,11 @@ describe('the import helper’s shop route', () => {
     expect((await handleImport(post({ shop: { lines: [] } }, 'Bearer user-token'))).status).toBe(400);
   });
 
-  it('reports an unreadable answer as a failure', async () => {
-    stub({ nope: true });
+  it('tries the next model when an answer is unreadable, and reports it if none do better', async () => {
+    const fetchMock = stub({ nope: true });
     const res = await handleImport(post({ shop: request }, 'Bearer user-token'));
     expect(res.status).toBe(502);
+    expect((await res.json()).error).toMatch(/unreadable answer/);
+    expect(fetchMock.mock.calls.filter(([u]) => String(u).includes('googleapis')).length).toBeGreaterThan(1);
   });
 });

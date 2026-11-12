@@ -251,7 +251,13 @@ export async function askGemini<T>(
     } | null;
     const answer = body?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
     if (!answer) throw new TryNextModel(`no answer (${body?.candidates?.[0]?.finishReason ?? 'no candidates'})`);
-    return parse(answer);
+    try {
+      return parse(answer);
+    } catch (e) {
+      // An answer in the wrong shape: another model may do better.
+      if (e instanceof AiSortError && e.code === 'failed') throw new TryNextModel(`unreadable answer (${e.message})`.slice(0, 300));
+      throw e;
+    }
   };
 
   // Two rounds: models that were only busy get a second go after a short pause.

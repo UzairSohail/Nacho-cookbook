@@ -198,28 +198,50 @@ export class ShopAiAnswerError extends Error {}
  * and "same as" pointing at a line that is itself bought.
  */
 export function planFromAnswer(answer: string, req: ShopAiRequest): ShopAiPlan {
-  let data: { lines?: unknown };
+  let data: unknown;
   try {
     data = JSON.parse(answer);
   } catch {
-    throw new ShopAiAnswerError('The AI answer was not readable.');
+    throw new ShopAiAnswerError(`The AI answer was not readable: ${answer.slice(0, 120)}`);
   }
-  if (!data || !Array.isArray(data.lines)) throw new ShopAiAnswerError('The AI answer was not readable.');
+  // { lines: [...] }, or a bare array, or the array under another name.
+  const rows: Record<string, unknown>[] | null = Array.isArray(data)
+    ? data
+    : data && typeof data === 'object'
+      ? ((Object.values(data as Record<string, unknown>).find(Array.isArray) as Record<string, unknown>[] | undefined) ?? null)
+      : null;
+  if (!rows) throw new ShopAiAnswerError(`The AI answer had no list: ${answer.slice(0, 120)}`);
+  const names = req.lines.map((l) => l.name.trim().toLowerCase());
+  /** "L3", "3", "L3: garlic", or the line's name. */
   const lineAt = (ref: unknown) => {
-    const m = /^L?(\d+)$/i.exec(String(ref ?? '').trim());
-    const i = m ? Number(m[1]) - 1 : -1;
-    return i >= 0 && i < req.lines.length ? i : -1;
+    const text = String(ref ?? '').trim();
+    const m = /^\s*L?\s*(\d+)/i.exec(text);
+    if (m) {
+      const i = Number(m[1]) - 1;
+      return i >= 0 && i < req.lines.length ? i : -1;
+    }
+    return text ? names.indexOf(text.toLowerCase()) : -1;
+  };
+  /** "W2", "2", "W2 Woolworths Garlic", or the product's name. */
+  const productAt = (ref: unknown, list: Product[]) => {
+    const text = String(ref ?? '').trim();
+    if (!text) return undefined;
+    const m = /^\s*[WC]?\s*(\d+)\b/i.exec(text);
+    if (m) return list[Number(m[1]) - 1];
+    return list.find((p) => p.name.toLowerCase() === text.toLowerCase());
   };
   const plan: ShopAiPlan = {};
   const sameAs = new Map<number, number>();
-  for (const raw of data.lines as Record<string, unknown>[]) {
-    const i = lineAt(raw?.line);
-    if (i < 0) continue;
+  rows.forEach((raw, k) => {
+    if (!raw || typeof raw !== 'object') return;
+    let i = lineAt(raw.line ?? raw.ref ?? raw.id ?? raw.name);
+    // No usable ref: when every line came back in order, go by position.
+    if (i < 0 && rows.length === req.lines.length) i = k;
+    if (i < 0) return;
     const line = req.lines[i];
     const entry: ShopAiLinePlan = { buy: clip(typeof raw.buy === 'string' ? raw.buy : '', 60) };
     for (const s of STORES) {
-      const m = new RegExp(`^${STORE_LETTER[s]}(\\d+)$`, 'i').exec(String(raw[s] ?? '').trim());
-      const product = m ? line.candidates[s]?.[Number(m[1]) - 1] : undefined;
+      const product = productAt(raw[s], line.candidates[s] ?? []);
       if (!product) continue;
       const packs = Math.round(Number(raw[`${s}Packs`]));
       entry[s] = { productId: product.id, packs: packs >= 1 && packs <= 50 ? packs : 1 };
@@ -227,7 +249,7 @@ export function planFromAnswer(answer: string, req: ShopAiRequest): ShopAiPlan {
     const other = lineAt(raw.sameAs);
     if (other >= 0 && other !== i) sameAs.set(i, other);
     plan[line.id] = entry;
-  }
+  });
   // "Same as" only counts when that line is bought (not itself covered by another).
   for (const [i, other] of sameAs) {
     if (sameAs.has(other) || !plan[req.lines[other].id]) continue;
@@ -236,6 +258,6 @@ export function planFromAnswer(answer: string, req: ShopAiRequest): ShopAiPlan {
     delete entry.woolies;
     delete entry.coles;
   }
-  if (!Object.keys(plan).length) throw new ShopAiAnswerError('The AI answer had no list lines.');
+  if (!Object.keys(plan).length) throw new ShopAiAnswerError(`The AI answer had no list lines: ${answer.slice(0, 160)}`);
   return plan;
 }
