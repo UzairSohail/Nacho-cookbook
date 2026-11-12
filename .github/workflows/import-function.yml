@@ -38,9 +38,11 @@ jobs:
 
       - run: npm run build:import-function
 
+      # A fixed version: "latest" makes the action ask GitHub's API which
+      # release is newest, and that call fails when GitHub rate-limits it.
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 3.1.0
 
       - name: Deploy to Supabase
         env:
