@@ -8,3 +8,4 @@ export * from './ids';
 export * from './ingredientLine';
 export * from './prices';
 export * from './recipeSearch';
+export * from './shopAi';

@@ -8,11 +8,14 @@
  * recipe data on the page, found in the page's words by AI).
  * POST { text, sourceUrl? } → { recipe } sorted by AI (Gemini, see aiSort.ts), for
  * signed-in people only. The app falls back to its own rules when this fails.
+ * POST { shop: ShopAiRequest } → { plan } : Gemini's pick of what to buy for each
+ * shopping list line (see src/core/shopAi.ts), for signed-in people only.
  * Bundled into supabase/functions/import-recipe/index.ts by `npm run build:import-function`.
  */
 import { pageText, recipeAsText, withPageDetails } from '@/src/core/recipeForAi';
+import { planFromAnswer, shopGeminiRequest, ShopAiAnswerError, shopRequestProblem, type ShopAiRequest } from '@/src/core/shopAi';
 import { extractRecipe, NoRecipeFoundError, type ImportedRecipe } from '@/src/core/recipeImport';
-import { AiSortError, checkGemini, MAX_TEXT_LENGTH, sortWithGemini } from './aiSort';
+import { AiSortError, askGemini, checkGemini, MAX_TEXT_LENGTH, sortWithGemini } from './aiSort';
 import { fetchPage, ImportError, NO_RECIPE_MESSAGE } from './pageFetch';
 
 /** Edge Function settings and secrets (Deno), undefined when run elsewhere. */
@@ -32,7 +35,7 @@ const json = (body: unknown, status = 200) =>
     headers: { ...CORS, 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
-type RequestBody = { url?: unknown; text?: unknown; sourceUrl?: unknown } | null;
+type RequestBody = { url?: unknown; text?: unknown; sourceUrl?: unknown; shop?: unknown } | null;
 
 /**
  * True when the request comes from someone signed in to the app (not just the
@@ -76,6 +79,34 @@ async function sortText(req: Request, body: { text: string; sourceUrl?: unknown 
   }
 }
 
+/** Gemini's shopping plan for the list the app sent. */
+async function planShop(req: Request, shop: unknown): Promise<Response> {
+  if (!(await isSignedIn(req))) return json({ error: 'Sign in to use AI picks.', code: 'signed-out' }, 401);
+  const problem = shopRequestProblem(shop);
+  if (problem) return json({ error: problem, code: 'bad-list' }, 400);
+  const request = shop as ShopAiRequest;
+  try {
+    const plan = await askGemini(
+      (thinking) => shopGeminiRequest(request, { thinking }),
+      (answer) => {
+        try {
+          return planFromAnswer(answer, request);
+        } catch (e) {
+          if (e instanceof ShopAiAnswerError) throw new AiSortError(e.message, 'failed');
+          throw e;
+        }
+      },
+      { apiKey: env('GEMINI_API_KEY'), model: env('GEMINI_MODEL') },
+    );
+    return json({ plan });
+  } catch (e) {
+    const code = e instanceof AiSortError ? e.code : 'failed';
+    if (code === 'failed') console.error('AI shop plan failed', e);
+    const status = code === 'busy' ? 429 : code === 'not-configured' ? 503 : 502;
+    return json({ error: e instanceof AiSortError ? e.message : 'AI picks failed.', code }, status);
+  }
+}
+
 /**
  * The page's recipe sorted by AI, or null when AI isn't available (signed out,
  * no key, allowance used up, failed), so the page's own recipe data is used.
@@ -108,6 +139,7 @@ export async function handleImport(req: Request): Promise<Response> {
     return json(await checkGemini({ apiKey: env('GEMINI_API_KEY'), model }));
   }
   const body: RequestBody = req.method === 'POST' ? ((await req.json().catch(() => null)) as RequestBody) : null;
+  if (body?.shop) return planShop(req, body.shop);
   if (typeof body?.text === 'string') return sortText(req, { text: body.text, sourceUrl: body.sourceUrl });
   const target = req.method === 'GET' ? new URL(req.url).searchParams.get('url') : typeof body?.url === 'string' ? body.url : null;
   if (!target) return json({ error: 'Give a recipe address.', code: 'bad-url' }, 400);

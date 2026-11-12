@@ -22,6 +22,7 @@ import {
   type PriceData,
 } from '@/src/core';
 import { usePriceData } from '@/src/prices/priceData';
+import { aiPlanFor, askShopAi, forgetShopAi, linesToAsk, useShopAi, type ShopAiState } from '@/src/prices/shopAi';
 import { periodName, usePlanPeriod } from '@/src/state/planPeriod';
 import { useStore } from '@/src/state/store';
 
@@ -39,6 +40,7 @@ export default function ShoppingListScreen() {
   const [note, setNote] = useState<string | null>(null);
   const [priceOpenId, setPriceOpenId] = useState<string | null>(null);
   const prices = usePriceData();
+  const shopAi = useShopAi();
 
   const current = periodRange(today(), period);
   const range = choice === 'this' ? current : periodRange(addDays(current.start, period), period);
@@ -93,12 +95,17 @@ export default function ShoppingListScreen() {
     const m = new Map<string, LineCost>();
     for (const item of state.list) {
       const ing = ingredientOf(item);
-      m.set(item.id, lineCostFor(item, ing, prices.data, standard));
+      m.set(item.id, lineCostFor(item, ing, prices.data, standard, shopAi));
     }
     return m;
-  }, [state.list, ingredientOf, prices.data, standard]);
+  }, [state.list, ingredientOf, prices.data, standard, shopAi]);
   const totals = totalsFor(state.list.filter((i) => !isStaple(i)).map((i) => costs.get(i.id)!));
   const stapleCount = state.list.filter(isStaple).length;
+  // Gemini is asked about what's to be bought: not staples, which are checked in the cupboard first.
+  const toBuy = state.list.filter((i) => !isStaple(i));
+  const aiStale = linesToAsk(shopAi, toBuy).length;
+  const aiAnswered = toBuy.length - aiStale;
+  const nameOf = (id: string) => state.list.find((i) => i.id === id)?.name ?? 'another item';
 
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.content}>
@@ -157,6 +164,17 @@ export default function ShoppingListScreen() {
       {state.list.length ? (
         <PriceSummary totals={totals} status={prices.status} updated={prices.data?.updated ?? null} staples={stapleCount}
           onUseCheapest={() => dispatch({ type: 'useCheapestStores' })}
+          ai={{
+            answered: aiAnswered,
+            stale: aiStale,
+            busy: shopAi.busy,
+            error: shopAi.error,
+            canAsk: !!prices.data && toBuy.length > 0,
+            onAsk: () => {
+              if (prices.data) askShopAi(toBuy, prices.data, (i) => amount(i.quantity, i.unit));
+            },
+            onForget: forgetShopAi,
+          }}
         />
       ) : null}
 
@@ -184,6 +202,7 @@ export default function ShoppingListScreen() {
                   ingredient={ingredientOf(item)}
                   standard={standard}
                   data={prices.data}
+                  coveredByName={costs.get(item.id)?.coveredBy ? nameOf(costs.get(item.id)!.coveredBy!) : null}
                   priceOpen={priceOpenId === item.id}
                   onTogglePrice={() => setPriceOpenId(priceOpenId === item.id ? null : item.id)}
                 />
@@ -209,11 +228,18 @@ export default function ShoppingListScreen() {
   );
 }
 
-function lineCostFor(item: ListItem, ing: Ingredient | undefined, data: PriceData | null, standard: MeasureStandard) {
+function lineCostFor(
+  item: ListItem,
+  ing: Ingredient | undefined,
+  data: PriceData | null,
+  standard: MeasureStandard,
+  shopAi: ShopAiState,
+) {
   const density = ing?.density ?? null;
   return costLine(item.name, needFor(item.quantity, item.unit, { standard, density }), data, ing?.pricePick, {
     produce: item.aisle === 'produce',
     density,
+    ai: aiPlanFor(shopAi, item),
   });
 }
 
@@ -227,6 +253,7 @@ function Row({
   ingredient,
   standard,
   data,
+  coveredByName,
   priceOpen,
   onTogglePrice,
 }: {
@@ -239,6 +266,7 @@ function Row({
   ingredient: Ingredient | undefined;
   standard: MeasureStandard;
   data: PriceData | null;
+  coveredByName: string | null;
   priceOpen: boolean;
   onTogglePrice: () => void;
 }) {
@@ -269,10 +297,11 @@ function Row({
           {item.sources.length ? <Text variant="muted">{item.sources.join(', ')}</Text> : null}
         </Pressable>
       </RNView>
-      {cost.woolies || cost.coles || priceOpen ? (
+      {cost.woolies || cost.coles || cost.coveredBy || priceOpen ? (
         <RNView style={styles.priceIndent}>
           <PriceLine
             cost={cost}
+            coveredByName={coveredByName}
             open={priceOpen}
             onToggle={onTogglePrice}
             onPickStore={(store) => dispatch({ type: 'pickStore', id: item.id, store })}

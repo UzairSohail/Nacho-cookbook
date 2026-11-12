@@ -161,12 +161,30 @@ const PER_MODEL_TIMEOUT_MS = 20_000;
 /** One model's failure that is worth trying the next model for. */
 class TryNextModel extends Error {}
 
+export interface GeminiOptions {
+  apiKey?: string;
+  model?: string;
+  fetchImpl?: typeof fetch;
+}
+
 /** Asks Gemini to sort the text, trying the fallback models in turn. `fetchImpl` is for tests. */
-export async function sortWithGemini(
-  text: string,
-  sourceUrl: string,
-  options: { apiKey?: string; model?: string; fetchImpl?: typeof fetch } = {},
-): Promise<ImportedRecipe> {
+export function sortWithGemini(text: string, sourceUrl: string, options: GeminiOptions = {}): Promise<ImportedRecipe> {
+  return askGemini(
+    (thinking) => geminiRequest(text.slice(0, MAX_TEXT_LENGTH), { thinking }),
+    (answer) => recipeFromAnswer(answer, sourceUrl),
+    options,
+  );
+}
+
+/**
+ * Sends one request to Gemini, trying the fallback models in turn, and reads
+ * the answer with `parse`. `request(false)` must leave out the thinking setting.
+ */
+export async function askGemini<T>(
+  request: (thinking: boolean) => unknown,
+  parse: (answer: string) => T,
+  options: GeminiOptions = {},
+): Promise<T> {
   const { apiKey, model = DEFAULT_GEMINI_MODEL, fetchImpl = fetch } = options;
   if (!apiKey) throw new AiSortError('AI sorting is not set up yet.', 'not-configured');
   const models = [...new Set([model, ...FALLBACK_GEMINI_MODELS])];
@@ -179,7 +197,7 @@ export async function sortWithGemini(
       return await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(name)}:generateContent`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify(geminiRequest(text.slice(0, MAX_TEXT_LENGTH), { thinking })),
+        body: JSON.stringify(request(thinking)),
         signal: AbortSignal.timeout(Math.max(3_000, Math.min(PER_MODEL_TIMEOUT_MS, left))),
       });
     } catch (e) {
@@ -188,7 +206,7 @@ export async function sortWithGemini(
     }
   };
 
-  const sortWith = async (name: string): Promise<ImportedRecipe> => {
+  const sortWith = async (name: string): Promise<T> => {
     let response = await ask(name, true);
     // A model that won't take the thinking setting answers 400, sometimes just
     // "Request contains an invalid argument" (Flash-Lite): ask again without it.
@@ -213,7 +231,7 @@ export async function sortWithGemini(
     } | null;
     const answer = body?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
     if (!answer) throw new TryNextModel(`no answer (${body?.candidates?.[0]?.finishReason ?? 'no candidates'})`);
-    return recipeFromAnswer(answer, sourceUrl);
+    return parse(answer);
   };
 
   for (const name of models) {

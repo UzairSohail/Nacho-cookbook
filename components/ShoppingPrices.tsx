@@ -3,7 +3,7 @@
  * prices under each line, and the panel for picking another product or size.
  */
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View as RNView } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View as RNView } from 'react-native';
 
 import { Button, Card, Chip, Text, TextInput, useTheme } from '@/components/Themed';
 import { Fonts } from '@/constants/Colors';
@@ -35,8 +35,10 @@ export function PriceSummary({
   updated,
   staples,
   onUseCheapest,
+  ai,
 }: {
   totals: ListTotals;
+  ai: AiControls;
   /** Buy every item at whichever store is cheaper for it. */
   onUseCheapest: () => void;
   status: PriceStatus;
@@ -107,6 +109,7 @@ export function PriceSummary({
           </RNView>
         ))}
       </RNView>
+      <AiPicks ai={ai} />
       <CheapestMix totals={totals} onUse={onUseCheapest} />
       {notes.length ? <Text variant="muted">{notes.join(' ')}</Text> : null}
       <Text variant="muted" style={{ fontSize: 12 }}>
@@ -114,6 +117,58 @@ export function PriceSummary({
         whole packs.
       </Text>
     </Card>
+  );
+}
+
+export interface AiControls {
+  /** Lines Gemini has picked for, as they are now. */
+  answered: number;
+  /** Lines it hasn't seen (new or changed since). */
+  stale: number;
+  busy: boolean;
+  error: string | null;
+  canAsk: boolean;
+  onAsk: () => void;
+  onForget: () => void;
+}
+
+/** Asking Gemini to pick what to buy: products, pack sizes and lines that are the same thing. */
+function AiPicks({ ai }: { ai: AiControls }) {
+  const c = useTheme();
+  const asked = ai.answered > 0;
+  return (
+    <RNView style={[styles.mix, { borderColor: c.border }]}>
+      <Text variant="label">✨ AI PICKS (GEMINI)</Text>
+      <Text variant="muted">
+        {!asked
+          ? 'Let Gemini choose sensible products and pack sizes, like one garlic bulb for 4 cloves, and buy items that are the same thing once.'
+          : ai.stale
+            ? `Gemini picked for ${ai.answered} ${ai.answered === 1 ? 'item' : 'items'}. ${ai.stale} ${ai.stale === 1 ? 'is' : 'are'} new or changed since.`
+            : `Gemini picked for ${ai.answered === 1 ? 'the one item' : `all ${ai.answered} items`}. Your own picks still come first.`}
+      </Text>
+      {ai.busy ? (
+        <RNView style={styles.row} accessibilityLiveRegion="polite">
+          <ActivityIndicator color={c.tint} />
+          <Text variant="muted">Asking Gemini… this takes a few seconds.</Text>
+        </RNView>
+      ) : (
+        <RNView style={styles.row}>
+          {!asked || ai.stale ? (
+            <Button
+              title={!asked ? 'Pick with AI' : 'Update AI picks'}
+              onPress={ai.onAsk}
+              disabled={!ai.canAsk}
+            />
+          ) : null}
+          {asked ? <Chip small label="Turn off AI picks" selected={false} onPress={ai.onForget} /> : null}
+        </RNView>
+      )}
+      {ai.error ? (
+        <Text style={{ color: c.tint }} accessibilityLiveRegion="polite">
+          {ai.error} The list is using the built-in matching.
+        </Text>
+      ) : null}
+    </RNView>
   );
 }
 
@@ -156,52 +211,76 @@ function CheapestMix({ totals, onUse }: { totals: ListTotals; onUse: () => void 
 /** The two prices under a list line. Tapping one buys it there; "Compare" opens the panel. */
 export function PriceLine({
   cost,
+  coveredByName,
   open,
   onPickStore,
   onToggle,
 }: {
   cost: LineCost;
+  /** The item this one is bought with, when Gemini says they're the same thing. */
+  coveredByName?: string | null;
   open: boolean;
   onPickStore: (store: StoreId) => void;
   onToggle: () => void;
 }) {
   const c = useTheme();
+  const toggle = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      onPress={onToggle}
+      hitSlop={8}
+      style={({ pressed }) => [styles.compare, { opacity: pressed ? 0.6 : 1 }]}>
+      <Text style={[styles.pillText, { color: c.tint }]}>{open ? 'Close' : 'Sizes'}</Text>
+    </Pressable>
+  );
+  if (cost.coveredBy) {
+    return (
+      <RNView style={styles.priceLine}>
+        <Text variant="muted" style={{ flexShrink: 1 }}>
+          ✨ Bought with {coveredByName ?? 'another item'}
+          {cost.aiBuy ? ` (${cost.aiBuy})` : ''}
+        </Text>
+        {toggle}
+      </RNView>
+    );
+  }
   return (
-    <RNView style={styles.priceLine}>
-      {STORES.map((s) => {
-        const sc = cost[s];
-        const chosen = cost.chosen === s;
-        return (
-          <Pressable
-            key={s}
-            accessibilityRole="radio"
-            accessibilityState={{ checked: chosen, disabled: !sc }}
-            accessibilityLabel={sc ? `${STORE_NAMES[s]} ${money(sc.cost)}` : `${STORE_NAMES[s]}: not found`}
-            disabled={!sc}
-            onPress={() => onPickStore(s)}
-            hitSlop={4}
-            style={({ pressed }) => [
-              styles.pricePill,
-              {
-                borderColor: chosen ? c.accent : c.border,
-                backgroundColor: chosen ? c.accent : 'transparent',
-                opacity: pressed ? 0.7 : 1,
-              },
-            ]}>
-            <Text style={[styles.pillText, { color: chosen ? c.onTint : sc ? c.text : c.textMuted }]}>
-              {STORE_SHORT[s]} {sc ? money(sc.cost) : '–'}
-            </Text>
-          </Pressable>
-        );
-      })}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        onPress={onToggle}
-        hitSlop={8}
-        style={({ pressed }) => [styles.compare, { opacity: pressed ? 0.6 : 1 }]}>
-        <Text style={[styles.pillText, { color: c.tint }]}>{open ? 'Close' : 'Sizes'}</Text>
-      </Pressable>
+    <RNView style={styles.gap}>
+      {cost.aiBuy ? (
+        <Text variant="muted" style={{ fontSize: 13 }}>
+          ✨ Buy {cost.aiBuy}
+        </Text>
+      ) : null}
+      <RNView style={styles.priceLine}>
+        {STORES.map((s) => {
+          const sc = cost[s];
+          const chosen = cost.chosen === s;
+          return (
+            <Pressable
+              key={s}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: chosen, disabled: !sc }}
+              accessibilityLabel={sc ? `${STORE_NAMES[s]} ${money(sc.cost)}` : `${STORE_NAMES[s]}: not found`}
+              disabled={!sc}
+              onPress={() => onPickStore(s)}
+              hitSlop={4}
+              style={({ pressed }) => [
+                styles.pricePill,
+                {
+                  borderColor: chosen ? c.accent : c.border,
+                  backgroundColor: chosen ? c.accent : 'transparent',
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}>
+              <Text style={[styles.pillText, { color: chosen ? c.onTint : sc ? c.text : c.textMuted }]}>
+                {STORE_SHORT[s]} {sc ? money(sc.cost) : '–'}
+              </Text>
+            </Pressable>
+          );
+        })}
+        {toggle}
+      </RNView>
     </RNView>
   );
 }
@@ -284,7 +363,7 @@ export function PricePanel({
             </RNView>
             {sc ? (
               <Text variant="muted">
-                {sc.picked ? 'Your pick' : 'Suggested'}: {sc.product.name}, {formatSize(sc.product)}
+                {sc.picked ? 'Your pick' : sc.ai ? 'Gemini’s pick' : 'Suggested'}: {sc.product.name}, {formatSize(sc.product)}
                 {sc.packs > 1 ? ` × ${sc.packs}` : ''} = {money(sc.cost)}
               </Text>
             ) : (
@@ -345,7 +424,7 @@ export function PricePanel({
         {hasPick ? <Chip small label="Back to suggestions" selected={false} onPress={onReset} /> : null}
       </RNView>
       <Text variant="muted" style={{ fontSize: 12 }}>
-        Your picks are remembered for next time and shared with your household.
+        Your picks are remembered for next time, shared with your household, and always beat Gemini’s.
       </Text>
     </RNView>
   );
