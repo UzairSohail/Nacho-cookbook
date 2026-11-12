@@ -6,6 +6,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
+import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors, { Fonts } from '@/constants/Colors';
 import { AuthProvider, useAuth } from '@/src/backend/auth';
@@ -80,6 +81,7 @@ function RootLayoutNav() {
           <Stack.Screen name="expo-sharing" options={{ title: 'Import a recipe' }} />
         </Stack.Protected>
       </Stack>
+      <UpdatePrompt />
     </ThemeProvider>
   );
 }

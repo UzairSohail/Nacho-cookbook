@@ -7,6 +7,8 @@ import { useAuth } from '@/src/backend/auth';
 import type { MeasureStandard, UnitSystem } from '@/src/core';
 import { setPlanPeriod, usePlanPeriod } from '@/src/state/planPeriod';
 import { useStore, type SyncInfo } from '@/src/state/store';
+import { formatMb } from '@/src/core/appUpdate';
+import { checkForUpdate, installUpdate, updatesSupported, useAppUpdate } from '@/src/updates/appUpdate';
 
 function Choice<T extends string>({
   options,
@@ -83,6 +85,8 @@ export default function SettingsScreen() {
 
       <PlanPeriodCard />
 
+      {updatesSupported ? <AppUpdateCard /> : null}
+
       <Card style={styles.gap}>
         <Text variant="label">UNITS</Text>
         <Choice<UnitSystem>
@@ -148,6 +152,39 @@ function PlanPeriodCard() {
         value={String(period) as '7' | '14'}
         onChange={(v) => setPlanPeriod(Number(v) as 7 | 14)}
       />
+    </Card>
+  );
+}
+
+function AppUpdateCard() {
+  const u = useAppUpdate();
+  const busy = u.phase !== 'idle';
+  let status: string;
+  if (u.installed == null) status = 'Development build: update checks are off.';
+  else if (u.phase === 'checking') status = 'Checking for updates…';
+  else if (u.phase === 'downloading')
+    status = `Downloading the update${u.progress == null ? '…' : ` (${Math.round(u.progress * 100)}%)`}`;
+  else if (u.phase === 'installing') status = 'Opening the installer…';
+  else if (u.available && u.latest)
+    status = `A newer version (build ${u.latest.build}) is ready to install${u.latest.apkSize ? `, ${formatMb(u.latest.apkSize)}` : ''}.`;
+  else if (u.checkedAt != null) status = 'You have the latest version.';
+  else status = '';
+  return (
+    <Card style={styles.gap}>
+      <Text variant="label">APP UPDATES</Text>
+      <Text variant="muted">
+        {u.installed != null ? `This is build ${u.installed}. ` : ''}The app checks for new versions when it opens.
+        Updating downloads the new version, then Android asks you to tap Update.
+      </Text>
+      {status ? <Text>{status}</Text> : null}
+      {u.error ? <Text variant="muted">{u.error}</Text> : null}
+      {u.installed != null ? (
+        u.available ? (
+          <Button title="Download and install" disabled={busy} onPress={() => installUpdate()} />
+        ) : (
+          <Button title="Check for updates" kind="secondary" disabled={busy} onPress={() => checkForUpdate(true)} />
+        )
+      ) : null}
     </Card>
   );
 }

@@ -3,6 +3,8 @@
 # manual run) publishes it as the one "Test build N" release and deletes the
 # older ones, so this link always downloads the newest APK:
 # https://github.com/UzairSohail/Nacho-cookbook/releases/latest/download/nacho-cookbook.apk
+# The app reads the latest release (tag test-build-N, version code N) to offer
+# in-app updates, so keep the tag format and the APK file name as they are.
 name: Android test APK
 
 on:
