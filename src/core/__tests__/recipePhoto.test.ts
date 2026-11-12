@@ -128,6 +128,30 @@ describe('photo libraries', () => {
   });
 });
 
+describe('Wikimedia answers in parts', () => {
+  it('asks again for image details Commons held back', async () => {
+    const info = (n: number) => ({
+      thumburl: `https://upload.wikimedia.org/${n}.jpg`,
+      mime: 'image/jpeg',
+      width: 1600,
+      height: 1200,
+    });
+    const first = {
+      continue: { iicontinue: 'B.jpg|2026', continue: 'gsroffset||' },
+      query: { pages: [{ index: 1, title: 'File:A lasagna.jpg', imageinfo: [info(1)] }, { index: 2, title: 'File:B lasagna.jpg' }] },
+    };
+    const second = {
+      continue: { gsroffset: '8', continue: 'gsroffset||' },
+      query: { pages: [{ index: 1, title: 'File:A lasagna.jpg' }, { index: 2, title: 'File:B lasagna.jpg', imageinfo: [info(2)] }] },
+    };
+    const fetchImpl = vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('iicontinue=') ? second : first)));
+    const found = await searchWikimedia('lasagna', fetchImpl as unknown as typeof fetch);
+    expect(found.map((f) => f.url)).toEqual(['https://upload.wikimedia.org/1.jpg', 'https://upload.wikimedia.org/2.jpg']);
+    // Stops before the next page of search results.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('pickByWords', () => {
   const c = (description: string): PhotoCandidate => ({ url: description, description, credit: '', source: 'pexels', pageUrl: '' });
   it('takes the first photo described with most of the words', () => {

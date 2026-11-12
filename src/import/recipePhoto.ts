@@ -194,24 +194,36 @@ export async function searchWikimedia(query: string, fetchImpl: typeof fetch = f
     iiurlwidth: '1200',
     iiextmetadatafilter: 'ImageDescription|ObjectName|Artist|LicenseShortName',
   });
-  const res = await fetchImpl(`https://commons.wikimedia.org/w/api.php?${params}`, {
-    headers: { 'user-agent': WIKIMEDIA_AGENT, 'api-user-agent': WIKIMEDIA_AGENT },
-    signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new Error(`Wikimedia answered ${res.status}`);
   type Meta = Record<string, { value?: unknown } | undefined>;
-  const data = (await res.json()) as {
-    query?: {
-      pages?: {
-        index?: number;
-        title?: string;
-        imageinfo?: { thumburl?: string; url?: string; descriptionurl?: string; mime?: string; width?: number; height?: number; extmetadata?: Meta }[];
-      }[];
-    };
+  type Page = {
+    index?: number;
+    title?: string;
+    imageinfo?: { thumburl?: string; url?: string; descriptionurl?: string; mime?: string; width?: number; height?: number; extmetadata?: Meta }[];
   };
+  // Commons hands out image details (thumbnails, descriptions) for only a few
+  // files per answer and says "continue" for the rest, so ask again a few times.
+  const pages = new Map<string, Page>();
+  let more: Record<string, string> | undefined;
+  for (let round = 0; round < 4; round += 1) {
+    const ask = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(more ?? {})) ask.set(k, v);
+    const res = await fetchImpl(`https://commons.wikimedia.org/w/api.php?${ask}`, {
+      headers: { 'user-agent': WIKIMEDIA_AGENT, 'api-user-agent': WIKIMEDIA_AGENT },
+      signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`Wikimedia answered ${res.status}`);
+    const data = (await res.json()) as { query?: { pages?: Page[] }; continue?: Record<string, string> };
+    for (const p of data.query?.pages ?? []) {
+      const key = p.title ?? String(p.index);
+      const had = pages.get(key);
+      pages.set(key, { ...had, ...p, imageinfo: p.imageinfo?.length ? p.imageinfo : had?.imageinfo });
+    }
+    // Only continue the image details, not on to the next page of search results.
+    more = data.continue && 'iicontinue' in data.continue ? data.continue : undefined;
+    if (!more) break;
+  }
   const meta = (m: Meta | undefined, key: string) => (typeof m?.[key]?.value === 'string' ? stripHtml(m[key]!.value as string) : '');
-  return (data.query?.pages ?? [])
-    .slice()
+  return [...pages.values()]
     .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
     .flatMap((p) => {
       const info = p.imageinfo?.[0];
