@@ -243,7 +243,8 @@ export async function searchWikimedia(
         return [];
       };
       if (!info || !url) return skip('no image details');
-      if (!/^https:\/\/upload\.wikimedia\.org\//.test(url)) return skip(`address ${url.slice(0, 60)}`);
+      // Commons serves files from upload.wikimedia.org and thumbnails from thumb.wikimedia.org.
+      if (!/^https:\/\/(upload|thumb)\.wikimedia\.org\//.test(url)) return skip(`address ${url.slice(0, 60)}`);
       if (!/^image\/(jpeg|png|webp)$/.test(info.mime ?? '')) return skip(info.mime ?? 'no type');
       if ((info.width ?? 0) < 600 || (info.height ?? 0) < 400) return skip(`${info.width}x${info.height}`);
       const name = (p.title ?? '').replace(/^File:/, '').replace(/\.[a-z]+$/i, '').replace(/[_-]+/g, ' ');
