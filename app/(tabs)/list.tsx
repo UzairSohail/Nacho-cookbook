@@ -2,7 +2,21 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, View as RNView } from 'react-native';
 
 import { PricePanel, PriceSummary, PriceTag } from '@/components/ShoppingPrices';
-import { Button, Card, Chip, Text, TextInput, useTheme } from '@/components/Themed';
+import {
+  Button,
+  Card,
+  Check,
+  Chip,
+  IconButton,
+  ScreenHeader,
+  Segmented,
+  TAB_BAR_SPACE,
+  Tag,
+  Text,
+  TextInput,
+  useTheme,
+} from '@/components/Themed';
+import { Fonts } from '@/constants/Colors';
 import {
   addDays,
   AISLE_LABELS,
@@ -108,135 +122,141 @@ export default function ShoppingListScreen() {
   const nameOf = (id: string) => state.list.find((i) => i.id === id)?.name ?? 'another item';
 
   return (
-    <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.content}>
-      <Card style={styles.gap}>
-        <RNView style={styles.spread}>
-          <Text variant="label">MAKE A LIST FROM THE PLAN</Text>
-          <Text variant="muted" style={styles.small}>{rangeText}</Text>
-        </RNView>
-        <RNView style={styles.row}>
-          {(['this', 'next'] as const).map((r) => (
-            <Chip
-              key={r}
+    <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScreenHeader
+        eyebrow={rangeText}
+        title="Shopping"
+        right={
+          state.list.length ? (
+            <Button
+              title="Share"
+              icon="share"
+              kind="secondary"
               small
-              role="radio"
-              label={`${r === 'this' ? 'This' : 'Next'} ${name}`}
-              selected={choice === r}
-              onPress={() => {
-                setChoice(r);
-                setNote(null);
-              }}
+              style={{ backgroundColor: c.card, borderColor: c.border, minHeight: 44 }}
+              onPress={share}
             />
-          ))}
-        </RNView>
-        <Button
-          title={state.list.length ? 'Update from plan' : 'Generate list'}
-          kind={state.list.length ? 'secondary' : 'primary'}
-          onPress={generate}
-        />
-        {note ? <Text style={{ color: c.tint }}>{note}</Text> : null}
-        <Text variant="muted" style={styles.small}>
-          Adding recipes in the Planner updates the list for you. Updating keeps anything you added or changed by hand.
-        </Text>
-      </Card>
+          ) : null
+        }
+      />
 
-      {state.list.length ? (
-        <PriceSummary totals={totals} status={prices.status} updated={prices.data?.updated ?? null} staples={stapleCount}
-          onUseCheapest={() => dispatch({ type: 'useCheapestStores' })}
-          ai={{
-            answered: aiAnswered,
-            stale: aiStale,
-            busy: shopAi.busy,
-            error: shopAi.error,
-            canAsk: !!prices.data && toBuy.length > 0,
-            onAsk: () => {
-              if (prices.data) askShopAi(toBuy, prices.data, (i) => amount(i.quantity, i.unit));
-            },
-            onForget: forgetShopAi,
-          }}
-        />
-      ) : null}
+      <RNView style={styles.body}>
+        <Card tone="ink" style={styles.planCard}>
+          <Segmented
+            onInk
+            accessibilityLabel="Which plan"
+            options={[['this', `This ${name}`], ['next', `Next ${name}`]] as const}
+            value={choice}
+            onChange={(r) => {
+              setChoice(r);
+              setNote(null);
+            }}
+          />
+          {state.list.length ? (
+            <RNView style={{ gap: 8 }}>
+              <RNView style={styles.spread}>
+                <Text variant="heading" style={{ color: c.onInk }} accessibilityLiveRegion="polite">
+                  {tickedCount === state.list.length ? 'All ticked off!' : `${tickedCount} of ${state.list.length} ticked off`}
+                </Text>
+                <Text style={{ fontSize: 13, color: c.inkMuted }}>
+                  {state.list.length - tickedCount ? `${state.list.length - tickedCount} to get` : 'Nice work'}
+                </Text>
+              </RNView>
+              <RNView style={[styles.progress, { backgroundColor: c.inkSunken }]}>
+                <RNView
+                  style={[styles.progressFill, { backgroundColor: c.accent, width: `${(tickedCount / state.list.length) * 100}%` }]}
+                />
+              </RNView>
+            </RNView>
+          ) : (
+            <Text variant="heading" style={{ color: c.onInk }}>Make a list from the plan</Text>
+          )}
+          <Button title={state.list.length ? 'Update from plan' : 'Generate list'} icon="refresh" onPress={generate} />
+          {note ? <Text style={{ color: c.onInk, fontFamily: Fonts.bodyBold, fontSize: 14 }}>{note}</Text> : null}
+          <Text style={{ fontSize: 13, lineHeight: 18, color: c.inkMuted }}>
+            {state.list.length
+              ? 'Adding recipes in the Planner updates the list for you. Anything you added or changed by hand is kept.'
+              : 'Adding recipes in the Planner updates the list for you.'}
+          </Text>
+        </Card>
 
-      <RNView style={styles.gap}>
         {state.list.length ? (
-          <>
-            <RNView style={styles.spread}>
-              <Text variant="label" accessibilityRole="header">YOUR LIST</Text>
-              <Text variant="muted" style={styles.small} accessibilityLiveRegion="polite">
-                {tickedCount === state.list.length
-                  ? `All ${state.list.length} ticked off. Nice work!`
-                  : `${tickedCount} of ${state.list.length} ticked off`}
-              </Text>
-            </RNView>
-            <RNView style={[styles.progress, { backgroundColor: c.border }]}>
-              <RNView
-                style={[styles.progressFill, { backgroundColor: c.accent, width: `${(tickedCount / state.list.length) * 100}%` }]}
-              />
-            </RNView>
-          </>
+          <PriceSummary totals={totals} status={prices.status} updated={prices.data?.updated ?? null} staples={stapleCount}
+            onUseCheapest={() => dispatch({ type: 'useCheapestStores' })}
+            ai={{
+              answered: aiAnswered,
+              stale: aiStale,
+              busy: shopAi.busy,
+              error: shopAi.error,
+              canAsk: !!prices.data && toBuy.length > 0,
+              onAsk: () => {
+                if (prices.data) askShopAi(toBuy, prices.data, (i) => amount(i.quantity, i.unit));
+              },
+              onForget: forgetShopAi,
+            }}
+          />
         ) : null}
+
         <RNView style={[styles.row, { flexWrap: 'nowrap' }]}>
           <TextInput
             value={newItem}
             onChangeText={setNewItem}
             placeholder="Add an item"
             accessibilityLabel="Add an item"
-            style={{ flex: 1, minWidth: 0 }}
+            style={{ flex: 1, minWidth: 0, borderRadius: 16 }}
             returnKeyType="done"
             onSubmitEditing={addItem}
           />
-          <Button title="Add" onPress={addItem} />
+          <IconButton icon="add" tone="ink" size={50} label="Add item" onPress={addItem} />
         </RNView>
-      </RNView>
 
-      {aisles.map((aisle) => {
-        const items = inAisle(aisle);
-        const left = items.filter((i) => !i.checked).length;
-        return (
-          <RNView key={aisle} style={styles.gap}>
-            <RNView style={styles.spread}>
-              <Text variant="label" accessibilityRole="header">{AISLE_LABELS[aisle].toUpperCase()}</Text>
-              <Text variant="muted" style={[styles.small, left === 0 ? { color: c.accent } : undefined]}>
-                {left === 0 ? 'All done ✓' : `${left} to get`}
-              </Text>
+        {aisles.map((aisle) => {
+          const items = inAisle(aisle);
+          const left = items.filter((i) => !i.checked).length;
+          return (
+            <RNView key={aisle} style={styles.aisle}>
+              <RNView style={[styles.spread, { paddingHorizontal: 4 }]}>
+                <Text variant="subheading" style={{ fontSize: 19 }} accessibilityRole="header">{AISLE_LABELS[aisle]}</Text>
+                <Text variant="muted" style={[styles.small, left === 0 ? { color: c.accent, fontFamily: Fonts.bodyBold } : undefined]}>
+                  {left === 0 ? 'All done' : `${left} to get`}
+                </Text>
+              </RNView>
+              <Card style={{ paddingVertical: 0, paddingHorizontal: 14, borderRadius: 20 }}>
+                {items.map((item, i) => (
+                  <Row
+                    key={item.id}
+                    item={item}
+                    last={i === items.length - 1}
+                    staple={isStaple(item)}
+                    amount={amount(item.quantity, item.unit)}
+                    editing={editingId === item.id}
+                    onEdit={() => setEditingId(editingId === item.id ? null : item.id)}
+                    cost={costs.get(item.id)!}
+                    ingredient={ingredientOf(item)}
+                    standard={standard}
+                    data={prices.data}
+                    coveredByName={costs.get(item.id)?.coveredBy ? nameOf(costs.get(item.id)!.coveredBy!) : null}
+                    priceOpen={priceOpenId === item.id}
+                    showPrice={!isStaple(item) || !!costs.get(item.id)?.chosen}
+                    onTogglePrice={() => setPriceOpenId(priceOpenId === item.id ? null : item.id)}
+                  />
+                ))}
+              </Card>
             </RNView>
-            <Card style={{ paddingVertical: 4 }}>
-              {items.map((item, i) => (
-                <Row
-                  key={item.id}
-                  item={item}
-                  last={i === items.length - 1}
-                  staple={isStaple(item)}
-                  amount={amount(item.quantity, item.unit)}
-                  editing={editingId === item.id}
-                  onEdit={() => setEditingId(editingId === item.id ? null : item.id)}
-                  cost={costs.get(item.id)!}
-                  ingredient={ingredientOf(item)}
-                  standard={standard}
-                  data={prices.data}
-                  coveredByName={costs.get(item.id)?.coveredBy ? nameOf(costs.get(item.id)!.coveredBy!) : null}
-                  priceOpen={priceOpenId === item.id}
-                  showPrice={!isStaple(item) || !!costs.get(item.id)?.chosen}
-                  onTogglePrice={() => setPriceOpenId(priceOpenId === item.id ? null : item.id)}
-                />
-              ))}
-            </Card>
-          </RNView>
-        );
-      })}
+          );
+        })}
 
-      {state.list.length ? (
-        <RNView style={styles.row}>
-          <Button title="Share list" onPress={share} />
-          <Button title="Clear ticked" kind="secondary" onPress={() => dispatch({ type: 'clearChecked' })} />
-        </RNView>
-      ) : (
-        <Card style={{ gap: 6 }}>
-          <Text variant="heading">Nothing on the list yet</Text>
-          <Text variant="muted">Add recipes in the Planner and their ingredients show up here. You can add things by hand too.</Text>
-        </Card>
-      )}
-
+        {state.list.length ? (
+          tickedCount ? (
+            <Button title="Clear ticked items" kind="secondary" style={{ marginTop: 8 }} onPress={() => dispatch({ type: 'clearChecked' })} />
+          ) : null
+        ) : (
+          <Card style={{ gap: 6 }}>
+            <Text variant="subheading">Nothing on the list yet</Text>
+            <Text variant="muted">Add recipes in the Planner and their ingredients show up here. You can add things by hand too.</Text>
+          </Card>
+        )}
+      </RNView>
     </ScrollView>
   );
 }
@@ -294,25 +314,28 @@ function Row({
   const [unit, setUnit] = useState(item.unit ?? '');
 
   return (
-    <RNView style={[styles.item, { borderBottomColor: c.border, borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth }]}>
+    <RNView style={[styles.item, { borderBottomColor: c.sunken, borderBottomWidth: last ? 0 : 1 }]}>
       <RNView style={styles.itemRow}>
         <Pressable
           accessibilityRole="checkbox"
           accessibilityState={{ checked: item.checked }}
           accessibilityLabel={item.name}
           onPress={() => dispatch({ type: 'toggleItem', id: item.id })}
-          hitSlop={10}
-          style={[styles.check, { borderColor: c.accent, backgroundColor: item.checked ? c.accent : 'transparent' }]}>
-          {item.checked ? <Text style={{ color: c.onTint, fontSize: 14 }}>✓</Text> : null}
+          hitSlop={10}>
+          <Check checked={item.checked} />
         </Pressable>
         <Pressable style={styles.itemText} onPress={onEdit} accessibilityHint="Edit this item">
-          <Text style={item.checked ? { textDecorationLine: 'line-through', color: c.textMuted } : undefined}>
-            {amount ? <Text style={{ fontWeight: '600' }}>{amount} </Text> : null}
+          <Text style={[{ fontSize: 15 }, item.checked ? { textDecorationLine: 'line-through', color: c.textFaint } : undefined]}>
+            {amount ? <Text style={{ fontFamily: Fonts.bodyBold }}>{amount} </Text> : null}
             {item.name}
           </Text>
-          {staple ? <Text variant="muted" style={[styles.small, { color: c.accent }]}>Pantry staple: check the cupboard first</Text> : null}
+          {staple && !item.checked ? (
+            <RNView style={{ marginVertical: 2 }}>
+              <Tag label="Staple · check the cupboard" tone="accent" />
+            </RNView>
+          ) : null}
           {item.sources.length ? (
-            <Text variant="muted" style={styles.small} numberOfLines={editing ? undefined : 1}>
+            <Text variant="muted" style={[styles.small, { fontSize: 12, lineHeight: 16 }, item.checked && { color: c.textFaint }]} numberOfLines={editing ? undefined : 1}>
               {item.sources.join(', ')}
             </Text>
           ) : null}
@@ -346,9 +369,9 @@ function Row({
       {editing ? (
         <RNView style={styles.gap}>
           <RNView style={styles.row}>
-            <TextInput value={qty} onChangeText={setQty} placeholder="Amount" style={{ width: 90 }} />
-            <TextInput value={unit} onChangeText={setUnit} placeholder="Unit" style={{ width: 80 }} />
-            <TextInput value={name} onChangeText={setName} placeholder="Item" style={{ flex: 1, minWidth: 120 }} />
+            <TextInput value={qty} onChangeText={setQty} placeholder="Amount" tone="sunken" style={{ width: 90 }} />
+            <TextInput value={unit} onChangeText={setUnit} placeholder="Unit" tone="sunken" style={{ width: 80 }} />
+            <TextInput value={name} onChangeText={setName} placeholder="Item" tone="sunken" style={{ flex: 1, minWidth: 120 }} />
           </RNView>
           <RNView style={styles.gap}>
             <Text variant="label">AISLE</Text>
@@ -369,6 +392,7 @@ function Row({
           <RNView style={styles.row}>
             <Button
               title="Save"
+              small
               onPress={() => {
                 dispatch({
                   type: 'editItem',
@@ -378,7 +402,7 @@ function Row({
                 onEdit();
               }}
             />
-            <Button title="Delete" kind="secondary" onPress={() => dispatch({ type: 'deleteItem', id: item.id })} />
+            <Button title="Delete" small kind="secondary" icon="delete" onPress={() => dispatch({ type: 'deleteItem', id: item.id })} />
           </RNView>
         </RNView>
       ) : null}
@@ -387,15 +411,17 @@ function Row({
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 16, paddingBottom: 48, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  content: { paddingBottom: TAB_BAR_SPACE + 16, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  body: { paddingHorizontal: 20, paddingTop: 20, gap: 14 },
+  planCard: { gap: 14, padding: 18, borderRadius: 24 },
+  aisle: { gap: 8, marginTop: 10 },
   gap: { gap: 8 },
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
-  item: { paddingVertical: 10, gap: 10 },
+  item: { paddingVertical: 12, gap: 10, minHeight: 64, justifyContent: 'center' },
   itemRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   itemText: { flex: 1, minWidth: 0, gap: 2 },
   spread: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' },
   small: { fontSize: 13, lineHeight: 18 },
-  progress: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  progressFill: { height: 6, borderRadius: 3 },
-  check: { width: 28, height: 28, borderRadius: 8, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  progress: { height: 8, borderRadius: 4, overflow: 'hidden' },
+  progressFill: { height: 8, borderRadius: 4 },
 });

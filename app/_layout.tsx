@@ -63,7 +63,14 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={theme}>
-      <Stack screenOptions={{ headerTitleStyle: { fontFamily: Fonts.title }, headerTintColor: c.tint }}>
+      <Stack
+        screenOptions={{
+          headerTitleStyle: { fontFamily: Fonts.title, color: c.text },
+          headerTintColor: c.text,
+          headerStyle: { backgroundColor: c.background },
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: c.background },
+        }}>
         <Stack.Protected guard={resetting}>
           <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         </Stack.Protected>

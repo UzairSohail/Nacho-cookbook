@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { RecipePhoto } from '@/components/RecipePhoto';
-import { Button, Text, useTheme } from '@/components/Themed';
+import { Button, Icon, Text, useTheme } from '@/components/Themed';
+import { Fonts } from '@/constants/Colors';
 import { pickPhoto, type PhotoSource } from '@/src/photos/photoStore';
 
 /** Take, choose, replace or remove one photo in the recipe editor. */
@@ -37,22 +38,36 @@ export function PhotoField({
     }
   };
 
+  const buttons = busy ? (
+    <View style={styles.row}>
+      <ActivityIndicator color={c.tint} />
+      <Text variant="muted">Adding photo…</Text>
+    </View>
+  ) : (
+    <View style={[styles.row, !path && size === 'cover' && { justifyContent: 'center' }]}>
+      <Button small icon="camera" title={path ? 'New photo' : 'Take photo'} kind={path ? 'secondary' : 'ink'} onPress={() => pick('camera')} />
+      <Button small icon="image" title={path ? 'Choose another' : 'Choose photo'} kind="secondary" onPress={() => pick('library')} />
+      {path ? <Button small icon="delete" title="Remove" kind="secondary" onPress={() => onChange(undefined)} /> : null}
+    </View>
+  );
+
   return (
     <View style={styles.gap}>
       {path ? (
-        <RecipePhoto path={path} style={size === 'cover' ? styles.cover : styles.step} label={label} />
-      ) : null}
-      {busy ? (
-        <View style={styles.row}>
-          <ActivityIndicator color={c.tint} />
-          <Text variant="muted">Adding photo…</Text>
+        <>
+          <RecipePhoto path={path} style={size === 'cover' ? styles.cover : styles.step} label={label} />
+          {buttons}
+        </>
+      ) : size === 'cover' ? (
+        <View style={[styles.drop, { borderColor: c.borderStrong, backgroundColor: c.sunken }]}>
+          <View style={[styles.dropIcon, { backgroundColor: c.card }]}>
+            <Icon name="camera" size={24} />
+          </View>
+          <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 15 }}>Add a photo of the dish</Text>
+          {buttons}
         </View>
       ) : (
-        <View style={styles.row}>
-          <Button title={path ? 'New photo' : 'Take photo'} kind="secondary" onPress={() => pick('camera')} />
-          <Button title={path ? 'Choose another' : 'Choose photo'} kind="secondary" onPress={() => pick('library')} />
-          {path ? <Button title="Remove photo" kind="secondary" onPress={() => onChange(undefined)} /> : null}
-        </View>
+        buttons
       )}
       {error ? <Text style={{ color: c.tint }}>{error}</Text> : null}
     </View>
@@ -62,6 +77,8 @@ export function PhotoField({
 const styles = StyleSheet.create({
   gap: { gap: 10 },
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
-  cover: { width: '100%', aspectRatio: 4 / 3, maxHeight: 360 },
-  step: { width: 160, height: 120 },
+  cover: { width: '100%', aspectRatio: 4 / 3, maxHeight: 360, borderRadius: 22 },
+  step: { width: 160, height: 120, borderRadius: 14 },
+  drop: { borderWidth: 1.5, borderStyle: 'dashed', borderRadius: 24, paddingVertical: 28, paddingHorizontal: 16, alignItems: 'center', gap: 12 },
+  dropIcon: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
 });
