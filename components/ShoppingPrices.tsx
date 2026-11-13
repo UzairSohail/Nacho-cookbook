@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View as RNView } from 'react-native';
 
-import { Button, Card, Chip, Text, TextInput, useTheme } from '@/components/Themed';
+import { Button, Card, Chip, Icon, Text, TextInput, useTheme } from '@/components/Themed';
 import { Fonts } from '@/constants/Colors';
 import {
   costAt,
@@ -49,22 +49,23 @@ export function PriceSummary({
   const c = useTheme();
   if (status === 'loading' && !totals.priced) {
     return (
-      <Card style={styles.gap}>
-        <Text variant="label">ESTIMATED COST</Text>
-        <Text variant="muted">Getting today’s Woolworths and Coles prices…</Text>
+      <Card tone="sunken" style={styles.compact}>
+        <Icon name="price" size={18} color={c.textMuted} />
+        <Text variant="muted" style={{ flex: 1, fontSize: 13 }}>Estimated cost: getting today’s Woolworths and Coles prices…</Text>
       </Card>
     );
   }
   if (!totals.priced) {
     return (
-      <Card style={styles.gap}>
-        <Text variant="label">ESTIMATED COST</Text>
-        <Text variant="muted">
+      <Card tone="sunken" style={styles.compact}>
+        <Icon name="price" size={18} color={c.textMuted} />
+        <Text variant="muted" style={{ flex: 1, fontSize: 13 }}>
+          Estimated cost:{' '}
           {status === 'offline'
-            ? 'Prices need a connection the first time. They’ll show once you’re back online.'
+            ? 'prices need a connection the first time. They’ll show once you’re back online.'
             : status === 'unavailable'
-              ? 'Today’s prices couldn’t be loaded. Try again later.'
-              : 'None of these items were found at Woolworths or Coles.'}
+              ? 'today’s prices couldn’t be loaded. Try again later.'
+              : 'none of these items were found at Woolworths or Coles.'}
         </Text>
       </Card>
     );
@@ -429,11 +430,12 @@ const styles = StyleSheet.create({
   section: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12, gap: 6 },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, minHeight: 32 },
   small: { fontSize: 13, lineHeight: 18 },
-  storeTotal: { flex: 1, minWidth: 0, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, gap: 2 },
+  storeTotal: { flex: 1, minWidth: 0, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8, gap: 2 },
   storeTotalTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 4, flexWrap: 'wrap' },
   tag: { alignItems: 'flex-end', justifyContent: 'center', minWidth: 76, minHeight: 44, gap: 1 },
   tagLink: { fontFamily: Fonts.bodyMedium, fontSize: 12, marginTop: 2 },
-  panel: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12, gap: 12 },
+  panel: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 12 },
+  compact: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 18 },
   storeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   options: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, overflow: 'hidden' },
   option: { flexDirection: 'row', gap: 10, paddingHorizontal: 10, paddingVertical: 10, alignItems: 'center' },

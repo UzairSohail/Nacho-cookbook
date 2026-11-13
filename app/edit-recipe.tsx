@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
 import { PhotoField } from '@/components/PhotoField';
-import { Button, Card, Chip, Text, TextInput, View, useTheme } from '@/components/Themed';
+import { Button, Card, Chip, IconButton, Segmented, Text, TextInput, View, useTheme } from '@/components/Themed';
 import { Fonts } from '@/constants/Colors';
 import {
   blankHeading,
@@ -143,10 +143,11 @@ export default function EditRecipeScreen() {
       <Stack.Screen
         options={{
           title: existing ? 'Edit recipe' : fromImport ? (fromPhoto ? 'Check photo recipe' : pasted ? 'Check pasted recipe' : 'Check imported recipe') : 'New recipe',
+          headerShadowVisible: false,
+          headerStyle: { backgroundColor: c.background },
+          headerTitleStyle: { fontFamily: Fonts.title, fontSize: 19, color: c.text },
           headerRight: () => (
-            <Pressable onPress={save} accessibilityRole="button" hitSlop={12} style={{ marginRight: Platform.OS === 'web' ? 16 : 0 }}>
-              <Text style={{ color: c.tint, fontFamily: Fonts.bodyBold }}>Save</Text>
-            </Pressable>
+            <Button title="Save" small onPress={save} style={{ marginRight: Platform.OS === 'web' ? 16 : 0, minHeight: 38 }} />
           ),
         }}
       />
@@ -155,7 +156,7 @@ export default function EditRecipeScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled">
         {fromImport ? (
-          <Card style={styles.gap}>
+          <Card tone="accent" style={styles.gap}>
             <Text variant="heading">{fromPhoto ? 'Sorted from your photo' : pasted ? 'Sorted from your pasted text' : `Imported from ${hostOf(draft.sourceUrl)}`}</Text>
             <Text variant="muted">
               {pasted
@@ -172,7 +173,7 @@ export default function EditRecipeScreen() {
             ) : null}
           </Card>
         ) : null}
-        <Field label="PHOTO">
+        <Field label="">
           <PhotoField
             path={draft.photoUrls[0]}
             householdId={state.householdId}
@@ -190,69 +191,80 @@ export default function EditRecipeScreen() {
             </Text>
           ) : null}
         </Field>
-        <Field label="NAME" error={errors?.title}>
+        <Field label="" error={errors?.title}>
           <TextInput
             value={draft.title}
             onChangeText={(title) => set({ title })}
-            placeholder="e.g. Chicken curry"
+            placeholder="Recipe name"
             accessibilityLabel="Recipe name"
             autoFocus={!existing && !fromImport}
+            style={[styles.titleInput, { borderBottomColor: errors?.title ? c.tint : c.borderStrong }]}
           />
-        </Field>
-        <Field label="DESCRIPTION">
           <TextInput
             value={draft.description}
             onChangeText={(description) => set({ description })}
             placeholder="A line about it (optional)"
             accessibilityLabel="Description"
             multiline
-            style={styles.multiline}
+            style={styles.plainInput}
           />
         </Field>
 
         {/* Labels are kept to one line so the boxes line up. */}
         <RNView style={styles.stats}>
-          <Field label="SERVINGS" error={errors?.servings} style={statStyle}>
+          <Field label="Serves" error={errors?.servings} style={statStyle} card>
             <TextInput
               value={draft.servings}
               onChangeText={(servings) => set({ servings })}
               keyboardType="numeric"
               accessibilityLabel="Servings"
+              placeholderTextColor={c.textFaint}
+              style={styles.statInput}
             />
           </Field>
-          <Field label="PREP (MIN)" error={errors?.prepMinutes} style={statStyle}>
+          <Field label="Prep (min)" error={errors?.prepMinutes} style={statStyle} card>
             <TextInput
               value={draft.prepMinutes}
               onChangeText={(prepMinutes) => set({ prepMinutes })}
               keyboardType="number-pad"
+              placeholder="—"
               accessibilityLabel="Prep time in minutes"
+              placeholderTextColor={c.textFaint}
+              style={styles.statInput}
             />
           </Field>
-          <Field label="COOK (MIN)" error={errors?.cookMinutes} style={statStyle}>
+          <Field label="Cook (min)" error={errors?.cookMinutes} style={statStyle} card>
             <TextInput
               value={draft.cookMinutes}
               onChangeText={(cookMinutes) => set({ cookMinutes })}
               keyboardType="number-pad"
+              placeholder="—"
               accessibilityLabel="Cook time in minutes"
+              placeholderTextColor={c.textFaint}
+              style={styles.statInput}
             />
           </Field>
-          <Field label="KEEPS (DAYS)" error={errors?.keepsForDays} style={statStyle}>
+          <Field label="Keeps (days)" error={errors?.keepsForDays} style={statStyle} card>
             <TextInput
               value={draft.keepsForDays}
               onChangeText={(keepsForDays) => set({ keepsForDays })}
               keyboardType="number-pad"
               placeholder="3"
               accessibilityLabel="Days leftovers keep"
+              placeholderTextColor={c.textFaint}
+              style={styles.statInput}
             />
           </Field>
         </RNView>
 
         <RNView style={styles.gap}>
           <Text variant="label">CUPS AND SPOONS</Text>
-          <RNView style={styles.row}>
-            <Chip role="radio" label="Ours" selected={!draft.usMeasures} onPress={() => set({ usMeasures: false })} />
-            <Chip role="radio" label="US (American recipe)" selected={draft.usMeasures} onPress={() => set({ usMeasures: true })} />
-          </RNView>
+          <Segmented
+            accessibilityLabel="Cups and spoons"
+            options={[['ours', 'Ours'], ['us', 'US (American recipe)']] as const}
+            value={draft.usMeasures ? 'us' : 'ours'}
+            onChange={(v) => set({ usMeasures: v === 'us' })}
+          />
           <Text variant="muted">
             Pick US for recipes from American sites, so spoons are converted and cups are labelled.
           </Text>
@@ -267,6 +279,7 @@ export default function EditRecipeScreen() {
           photoAdded={photoAdded}
         />
 
+        <Text variant="heading" accessibilityRole="header">Extras</Text>
         <Field label="TAGS">
           <TextInput
             value={draft.tags}
@@ -300,9 +313,9 @@ export default function EditRecipeScreen() {
         {errors && hasErrors(errors) ? (
           <Text style={{ color: c.tint }}>Check the highlighted fields above.</Text>
         ) : null}
-        <RNView style={styles.row}>
-          <Button title={existing ? 'Save changes' : 'Save recipe'} onPress={save} />
+        <RNView style={[styles.row, { flexWrap: 'nowrap' }]}>
           <Button title="Cancel" kind="secondary" onPress={() => router.back()} />
+          <Button title={existing ? 'Save changes' : 'Save recipe'} style={{ flex: 1 }} onPress={save} />
         </RNView>
 
         {existing ? (
@@ -316,7 +329,7 @@ export default function EditRecipeScreen() {
                 </RNView>
               </>
             ) : (
-              <Button title="Delete recipe" kind="secondary" onPress={() => setConfirmDelete(true)} />
+              <Button title="Delete recipe" kind="quiet" icon="delete" onPress={() => setConfirmDelete(true)} />
             )}
           </Card>
         ) : null}
@@ -353,8 +366,10 @@ function IngredientsEditor({
 
   return (
     <RNView style={styles.gap}>
-      <Text variant="heading">Ingredients</Text>
-      <Text variant="muted">Leave the amount empty for things like “salt, to taste”.</Text>
+      <RNView style={{ gap: 2 }}>
+        <Text variant="heading" accessibilityRole="header">Ingredients</Text>
+        <Text variant="muted" style={{ fontSize: 13 }}>Leave the amount empty for things like “salt, to taste”.</Text>
+      </RNView>
       {lines.map((l, i) => (
         <Card key={l.key} style={styles.lineCard}>
           {l.kind === 'heading' ? (
@@ -363,6 +378,7 @@ function IngredientsEditor({
               onChangeText={(text) => setLine(l.key, { text })}
               placeholder="Section, e.g. For the sauce (blank ends it)"
               accessibilityLabel="Section heading"
+              tone="sunken"
               style={{ fontFamily: Fonts.bodyBold }}
             />
           ) : (
@@ -373,7 +389,8 @@ function IngredientsEditor({
                   onChangeText={(amount) => setLine(l.key, { amount })}
                   placeholder="1 1/2"
                   accessibilityLabel="Amount"
-                  style={styles.amount}
+                  tone="sunken"
+                  style={[styles.amount, { fontFamily: Fonts.bodyBold }]}
                 />
                 <TextInput
                   value={l.unit}
@@ -381,6 +398,7 @@ function IngredientsEditor({
                   placeholder="cups"
                   accessibilityLabel="Unit"
                   autoCapitalize="none"
+                  tone="sunken"
                   style={styles.unit}
                 />
                 <TextInput
@@ -388,6 +406,7 @@ function IngredientsEditor({
                   onChangeText={(name) => setLine(l.key, { name })}
                   placeholder="Ingredient"
                   accessibilityLabel="Ingredient"
+                  tone="sunken"
                   style={styles.name}
                 />
               </RNView>
@@ -396,6 +415,7 @@ function IngredientsEditor({
                 onChangeText={(note) => setLine(l.key, { note })}
                 placeholder="Note, e.g. finely chopped"
                 accessibilityLabel="Note"
+                style={styles.plainInput}
               />
               {errors?.lines[l.key] ? <Text style={{ color: c.tint }}>{errors.lines[l.key]}</Text> : null}
             </>
@@ -419,9 +439,9 @@ function IngredientsEditor({
         </Card>
       ))}
       <RNView style={styles.row}>
-        <Button title="Add ingredient" kind="secondary" style={styles.grow} onPress={() => set({ lines: [...lines, blankIngredient()] })} />
-        <Button title="Add section" kind="secondary" style={styles.grow} onPress={() => set({ lines: [...lines, blankHeading()] })} />
-        <Button title="Paste a list" kind="secondary" style={styles.grow} onPress={() => setPasting((p) => !p)} />
+        <Button title="Ingredient" icon="add" kind="ink" small onPress={() => set({ lines: [...lines, blankIngredient()] })} />
+        <Button title="Section" icon="add" kind="secondary" small onPress={() => set({ lines: [...lines, blankHeading()] })} />
+        <Button title="Paste a list" icon="paste" kind="secondary" small onPress={() => setPasting((p) => !p)} />
       </RNView>
       {pasting ? (
         <Card style={styles.gap}>
@@ -472,12 +492,12 @@ function StepsEditor({
   };
   return (
     <RNView style={styles.gap}>
-      <Text variant="heading">Method</Text>
+      <Text variant="heading" accessibilityRole="header">Method</Text>
       {steps.map((s, i) => (
         <Card key={s.key} style={styles.lineCard}>
           <RNView style={[styles.row, { alignItems: 'flex-start', flexWrap: 'nowrap' }]}>
-            <RNView style={[styles.stepNum, { backgroundColor: c.tint }]}>
-              <Text style={{ color: c.onTint }}>{i + 1}</Text>
+            <RNView style={[styles.stepNum, { backgroundColor: c.tintSoft }]}>
+              <Text style={{ color: c.onTintSoft, fontFamily: Fonts.title }}>{i + 1}</Text>
             </RNView>
             <TextInput
               value={s.text}
@@ -485,7 +505,7 @@ function StepsEditor({
               placeholder="What to do"
               accessibilityLabel={`Step ${i + 1}`}
               multiline
-              style={[styles.multiline, { flex: 1 }]}
+              style={[styles.multiline, styles.plainInput, { flex: 1 }]}
             />
           </RNView>
           {s.photo || photoOpen.has(s.key) ? (
@@ -526,8 +546,8 @@ function StepsEditor({
         </Card>
       ))}
       <RNView style={styles.row}>
-        <Button title="Add step" kind="secondary" style={styles.grow} onPress={() => set({ steps: [...steps, blankStep()] })} />
-        <Button title="Paste steps" kind="secondary" style={styles.grow} onPress={() => setPasting((p) => !p)} />
+        <Button title="Step" icon="add" kind="ink" small onPress={() => set({ steps: [...steps, blankStep()] })} />
+        <Button title="Paste steps" icon="paste" kind="secondary" small onPress={() => setPasting((p) => !p)} />
       </RNView>
       {pasting ? (
         <Card style={styles.gap}>
@@ -575,34 +595,40 @@ function RowTools({
     <RNView style={[styles.row, { alignItems: 'center' }]}>
       {children}
       <RNView style={{ flex: 1 }} />
-      <IconButton label="↑" a11y="Move up" disabled={index === 0} onPress={() => move(index - 1)} />
-      <IconButton label="↓" a11y="Move down" disabled={index === count - 1} onPress={() => move(index + 1)} />
-      <IconButton label="✕" a11y="Remove" onPress={remove} />
+      <IconButton icon="up" tone="clear" size={36} iconSize={18} label="Move up" disabled={index === 0} onPress={() => move(index - 1)} />
+      <IconButton icon="down" tone="clear" size={36} iconSize={18} label="Move down" disabled={index === count - 1} onPress={() => move(index + 1)} />
+      <IconButton icon="delete" tone="clear" size={36} iconSize={18} label="Remove" onPress={remove} />
     </RNView>
   );
 }
 
-function IconButton({ label, a11y, onPress, disabled }: { label: string; a11y: string; onPress: () => void; disabled?: boolean }) {
+function Field({
+  label,
+  error,
+  style,
+  card,
+  children,
+}: {
+  label: string;
+  error?: string;
+  style?: object;
+  /** A small card with the label inside, for the number fields. */
+  card?: boolean;
+  children: ReactNode;
+}) {
   const c = useTheme();
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={a11y}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.iconBtn, { borderColor: c.border, opacity: disabled ? 0.3 : pressed ? 0.6 : 1 }]}>
-      <Text style={{ color: c.text, fontSize: 16 }}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function Field({ label, error, style, children }: { label: string; error?: string; style?: object; children: ReactNode }) {
-  const c = useTheme();
-  return (
-    <RNView style={[styles.field, style]}>
-      <Text variant="label" numberOfLines={1}>
-        {label}
-      </Text>
+    <RNView
+      style={[
+        styles.field,
+        card && [styles.fieldCard, { backgroundColor: c.card, borderColor: error ? c.tint : c.border }],
+        style,
+      ]}>
+      {label ? (
+        <Text variant={card ? 'muted' : 'label'} numberOfLines={1} style={card ? { fontSize: 12, fontFamily: Fonts.bodyBold } : undefined}>
+          {label}
+        </Text>
+      ) : null}
       {children}
       {error ? <Text style={{ color: c.tint }}>{error}</Text> : null}
     </RNView>
@@ -621,10 +647,22 @@ const styles = StyleSheet.create({
   grow: { flexGrow: 1 },
   multiline: { minHeight: 72, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' },
   paste: { minHeight: 140, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' },
-  lineCard: { gap: 8, padding: 12 },
-  amount: { width: 72 },
-  unit: { width: 84 },
-  name: { flex: 1, minWidth: 120 },
-  stepNum: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
-  iconBtn: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  lineCard: { gap: 6, padding: 10, borderRadius: 20 },
+  amount: { width: 64, minHeight: 44, borderRadius: 12, paddingHorizontal: 10 },
+  unit: { width: 76, minHeight: 44, borderRadius: 12, paddingHorizontal: 10 },
+  name: { flex: 1, minWidth: 120, minHeight: 44, borderRadius: 12 },
+  stepNum: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
+  fieldCard: { borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10, gap: 0 },
+  statInput: { borderWidth: 0, backgroundColor: 'transparent', paddingHorizontal: 0, minHeight: 36, fontFamily: Fonts.title, fontSize: 22 },
+  titleInput: {
+    borderWidth: 0,
+    borderBottomWidth: 1.5,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 2,
+    minHeight: 56,
+    fontFamily: Fonts.title,
+    fontSize: 26,
+  },
+  plainInput: { borderWidth: 0, backgroundColor: 'transparent', paddingHorizontal: 2 },
 });

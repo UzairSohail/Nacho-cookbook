@@ -3,7 +3,8 @@ import { FlatList, Modal, Pressable, StyleSheet, useWindowDimensions, View as RN
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { RecipePhoto } from '@/components/RecipePhoto';
-import { Button, Text, TextInput, useTheme } from '@/components/Themed';
+import { Button, SearchField, Text, useTheme } from '@/components/Themed';
+import { Fonts } from '@/constants/Colors';
 import { searchRecipes, type Recipe } from '@/src/core';
 
 const GAP = 12;
@@ -55,13 +56,13 @@ export function RecipeBrowser({
       <SafeAreaProvider>
         <SafeAreaView style={[styles.screen, { backgroundColor: c.background }]}>
           <RNView style={styles.header}>
-            <Text variant="heading" style={{ flex: 1 }} accessibilityRole="header">
+            <Text variant="title" style={{ flex: 1 }} accessibilityRole="header">
               All recipes
             </Text>
-            <Button title={plannedIds.size ? `Done (${plannedIds.size})` : 'Done'} onPress={close} />
+            <Button title={plannedIds.size ? `Done (${plannedIds.size})` : 'Done'} kind="ink" small onPress={close} />
           </RNView>
           <RNView style={styles.searchRow}>
-            <TextInput
+            <SearchField
               value={query}
               onChangeText={setQuery}
               placeholder="Filter by name, tag or ingredient"
@@ -90,18 +91,19 @@ export function RecipeBrowser({
                     {
                       width: tileWidth,
                       backgroundColor: c.card,
-                      borderColor: planned ? c.tint : c.border,
+                      borderColor: planned ? c.ink : c.border,
                       opacity: pressed ? 0.75 : 1,
                     },
                   ]}>
                   <RNView>
                     <RecipePhoto
                       path={item.photoUrls?.[0]}
-                      fallbackLetter={item.title[0]}
+                      recipe={item}
+                      iconSize={40}
                       style={[styles.photo, { height: Math.round(tileWidth * 0.75) }]}
                     />
-                    <RNView style={[styles.badge, { backgroundColor: planned ? c.tint : c.card, borderColor: c.tint }]}>
-                      <Text style={{ color: planned ? c.onTint : c.tint, fontSize: 13, fontWeight: '600' }}>
+                    <RNView style={[styles.badge, { backgroundColor: planned ? c.ink : c.card }]}>
+                      <Text style={{ color: planned ? c.onInk : c.text, fontSize: 13, fontFamily: Fonts.bodyBold }}>
                         {planned ? '✓ Added' : '+ Add'}
                       </Text>
                     </RNView>
@@ -126,7 +128,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: PADDING,
-    paddingTop: 12,
+    paddingTop: 16,
     paddingBottom: 8,
     maxWidth: MAX_WIDTH,
     width: '100%',
@@ -134,16 +136,15 @@ const styles = StyleSheet.create({
   },
   searchRow: { paddingHorizontal: PADDING, paddingBottom: 8, maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
   grid: { padding: PADDING, paddingTop: 8, paddingBottom: 32, gap: GAP, maxWidth: MAX_WIDTH, width: '100%', alignSelf: 'center' },
-  tile: { borderWidth: 2, borderRadius: 14, overflow: 'hidden' },
+  tile: { borderWidth: 2, borderRadius: 22, overflow: 'hidden' },
   photo: { width: '100%', borderRadius: 0 },
   badge: {
     position: 'absolute',
     top: 8,
     right: 8,
-    borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  name: { paddingHorizontal: 10, paddingVertical: 8, fontSize: 15, lineHeight: 20 },
+  name: { paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, lineHeight: 21, fontFamily: Fonts.title },
 });

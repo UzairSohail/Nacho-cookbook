@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
+import { BrandMark } from '@/components/BrandMark';
 import { Button, Card, Text, TextInput, useTheme } from '@/components/Themed';
 import { useAuth } from '@/src/backend/auth';
 
@@ -34,7 +35,7 @@ export default function ResetPasswordScreen() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen options={{ headerShown: false }} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text variant="title" style={styles.brand}>Nacho Cookbook</Text>
+        <BrandMark />
         <Card style={styles.card}>
           <Text variant="heading">Choose a new password</Text>
           {account?.email ? <Text variant="muted">For {account.email}</Text> : null}
@@ -58,7 +59,7 @@ export default function ResetPasswordScreen() {
           {message ? <Text variant="muted" style={{ color: c.tint }}>{message}</Text> : null}
           <Button title={busy ? 'Please wait…' : 'Save new password'} onPress={save} disabled={busy} />
           <RNView style={{ alignItems: 'center' }}>
-            <Button kind="secondary" title="Back" onPress={back} disabled={busy} style={{ borderWidth: 0 }} />
+            <Button kind="quiet" title="Back" onPress={back} disabled={busy} />
           </RNView>
         </Card>
       </ScrollView>
@@ -68,6 +69,5 @@ export default function ResetPasswordScreen() {
 
 const styles = StyleSheet.create({
   content: { flexGrow: 1, justifyContent: 'center', padding: 16, gap: 12, maxWidth: 480, width: '100%', alignSelf: 'center' },
-  brand: { textAlign: 'center', fontSize: 34 },
-  card: { gap: 12, marginTop: 12 },
+  card: { gap: 12, marginTop: 16, borderRadius: 28, padding: 20 },
 });

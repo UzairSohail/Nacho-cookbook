@@ -5,7 +5,9 @@ import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, 
 
 import InstagramCaptionReader from '@/components/InstagramCaptionReader';
 
-import { Button, Card, Text, TextInput, useTheme } from '@/components/Themed';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { Button, Card, Icon, IconButton, SectionTitle, Segmented, Text, TextInput, useTheme, type IconName } from '@/components/Themed';
 import { captionFromEmbedHtml, instagramPost, type InstagramPost } from '@/src/core/instagram';
 import { importRecipe, ImportError } from '@/src/import/importRecipe';
 import { NoRecipeTextError } from '@/src/core/recipeText';
@@ -34,6 +36,7 @@ export default function ImportRecipeScreen() {
   const params = useLocalSearchParams<{ mode?: string; url?: string; text?: string; source?: string }>();
   const { state } = useStore();
   const c = useTheme();
+  const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<Mode>(params.mode === 'text' || params.mode === 'photo' ? params.mode : 'url');
   const [url, setUrl] = useState(params.url ?? '');
   const [text, setText] = useState(params.text ?? '');
@@ -183,36 +186,36 @@ export default function ImportRecipeScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Stack.Screen options={{ title: 'Import a recipe' }} />
-      <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <RNView style={[styles.tabs, { borderColor: c.border }]} accessibilityRole="tablist">
-          {(
-            [
-              ['url', 'Website'],
-              ['photo', 'Photo'],
-              ['text', 'Paste text'],
-            ] as const
-          ).map(([m, label]) => (
-            <Pressable
-              key={m}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: mode === m }}
-              onPress={() => switchTo(m)}
-              style={[styles.tab, mode === m && { backgroundColor: c.tint }]}>
-              <Text numberOfLines={1} style={{ color: mode === m ? c.onTint : c.text, textAlign: 'center', fontSize: 15 }}>
-                {label}
-              </Text>
-            </Pressable>
-          ))}
+      <Stack.Screen options={{ title: 'Import a recipe', headerShown: false }} />
+      <ScrollView
+        style={{ backgroundColor: c.background }}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 32 }]}
+        keyboardShouldPersistTaps="handled">
+        <IconButton icon="back" label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
+        <RNView style={{ gap: 6 }}>
+          <Text variant="title" accessibilityRole="header">Bring a recipe home</Text>
+          <Text variant="muted" style={{ fontSize: 15, lineHeight: 22 }}>
+            From a website, an Instagram post, a cookbook photo or text you’ve copied.
+          </Text>
         </RNView>
+        <Segmented<Mode>
+          role="tab"
+          accessibilityLabel="Import from"
+          options={[
+            ['url', 'Website', 'link'],
+            ['photo', 'Photo', 'camera'],
+            ['text', 'Text', 'paste'],
+          ]}
+          value={mode}
+          onChange={switchTo}
+        />
 
         {mode === 'url' ? (
           <>
-            <Text variant="muted">
-              Paste the address of a recipe page or an Instagram post. The app finds the recipe among the story and ads, and
-              opens it for you to check before saving.
-            </Text>
+            <Card style={styles.gap}>
+            <Text variant="label">RECIPE OR INSTAGRAM LINK</Text>
             <TextInput
+              tone="sunken"
               value={url}
               onChangeText={(t) => {
                 setUrl(t);
@@ -229,6 +232,19 @@ export default function ImportRecipeScreen() {
               onSubmitEditing={() => go()}
               editable={!busy}
             />
+            <Text variant="muted" style={{ fontSize: 13 }}>
+              The app finds the recipe among the story and ads, and opens it for you to check before saving.
+            </Text>
+            <RNView style={styles.row}>
+              <Button
+                title={busy ? (reading ? 'Reading the caption…' : 'Finding the recipe…') : 'Find recipe'}
+                onPress={() => go()}
+                disabled={busy || !url.trim()}
+                style={{ flex: 1 }}
+              />
+              {busy ? <ActivityIndicator color={c.tint} /> : null}
+            </RNView>
+            </Card>
             {existing ? (
               <Text variant="muted">
                 You already have{' '}
@@ -272,15 +288,16 @@ export default function ImportRecipeScreen() {
                 </RNView>
               </Card>
             ) : null}
-            <RNView style={styles.row}>
-              <Button
-                title={busy ? (reading ? 'Reading the caption…' : 'Finding the recipe…') : 'Find recipe'}
-                onPress={() => go()}
-                disabled={busy || !url.trim()}
-                style={busy || !url.trim() ? { opacity: 0.5 } : undefined}
-              />
-              {busy ? <ActivityIndicator color={c.tint} /> : null}
-            </RNView>
+            {!busy && !error && !instagramHelp ? (
+              <RNView style={{ gap: 10, marginTop: 8 }}>
+                <Text variant="label">OR START ANOTHER WAY</Text>
+                <Card style={styles.ways}>
+                  <Way icon="camera" tone={0} title="Snap a cookbook page" hint="The app reads the text from the photo" onPress={() => switchTo('photo')} />
+                  <Way icon="paste" tone={4} title="Paste a recipe" hint="Sorted into ingredients and steps" onPress={() => switchTo('text')} />
+                  <Way icon="edit" tone={1} title="Type it in yourself" hint="Start from a blank recipe" last onPress={() => router.replace('/edit-recipe')} />
+                </Card>
+              </RNView>
+            ) : null}
           </>
         ) : mode === 'photo' ? (
           <>
@@ -297,20 +314,21 @@ export default function ImportRecipeScreen() {
                 <Text style={{ color: c.tint }}>{error}</Text>
               </Card>
             ) : null}
-            <RNView style={styles.row}>
-              <Button
-                title="Take a photo"
-                onPress={() => readPhotos('camera')}
-                disabled={busy}
-                style={busy ? { opacity: 0.5 } : undefined}
-              />
-              <Button
-                title={Platform.OS === 'web' ? 'Choose a picture' : 'Choose from photos'}
-                kind="secondary"
-                onPress={() => readPhotos('library')}
-                disabled={busy}
-                style={busy ? { opacity: 0.5 } : undefined}
-              />
+            <RNView style={[styles.drop, { borderColor: c.borderStrong, backgroundColor: c.sunken }]}>
+              <RNView style={[styles.dropIcon, { backgroundColor: c.card }]}>
+                <Icon name="camera" size={26} />
+              </RNView>
+              <RNView style={[styles.row, { justifyContent: 'center' }]}>
+                <Button title="Take a photo" icon="camera" kind="ink" onPress={() => readPhotos('camera')} disabled={busy} />
+                <Button
+                  title={Platform.OS === 'web' ? 'Choose a picture' : 'Choose from photos'}
+                  icon="image"
+                  kind="secondary"
+                  style={{ backgroundColor: c.card }}
+                  onPress={() => readPhotos('library')}
+                  disabled={busy}
+                />
+              </RNView>
             </RNView>
             {busy ? (
               <RNView style={styles.row}>
@@ -365,7 +383,7 @@ export default function ImportRecipeScreen() {
               accessibilityLabel="Recipe text"
               multiline
               autoFocus
-              style={styles.paste}
+              style={[styles.paste, { borderRadius: 18 }]}
             />
             {error ? (
               <Card style={styles.gap}>
@@ -377,7 +395,7 @@ export default function ImportRecipeScreen() {
                 title={busy ? 'Sorting…' : 'Sort into a recipe'}
                 onPress={sortText}
                 disabled={busy || !text.trim()}
-                style={busy || !text.trim() ? { opacity: 0.5 } : undefined}
+                style={{ flex: 1 }}
               />
               {busy ? <ActivityIndicator color={c.tint} /> : null}
             </RNView>
@@ -393,10 +411,42 @@ export default function ImportRecipeScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 16, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  content: { paddingHorizontal: 20, gap: 18, maxWidth: 760, width: '100%', alignSelf: 'center' },
   gap: { gap: 10 },
   row: { flexDirection: 'row', gap: 12, alignItems: 'center', flexWrap: 'wrap' },
-  tabs: { flexDirection: 'row', borderWidth: 1, borderRadius: 999, padding: 4, gap: 4 },
-  tab: { flex: 1, paddingVertical: 8, paddingHorizontal: 8, borderRadius: 999 },
+  drop: { borderWidth: 1.5, borderStyle: 'dashed', borderRadius: 24, paddingVertical: 28, paddingHorizontal: 16, alignItems: 'center', gap: 14 },
+  dropIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  ways: { paddingVertical: 0, paddingHorizontal: 14 },
+  way: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 68 },
   paste: { minHeight: 260, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' },
 });
+
+/** One row in "Or start another way". */
+function Way({
+  icon,
+  tone,
+  title,
+  hint,
+  last,
+  onPress,
+}: {
+  icon: IconName;
+  tone: 0 | 1 | 2 | 3 | 4;
+  title: string;
+  hint: string;
+  last?: boolean;
+  onPress: () => void;
+}) {
+  const c = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.way, !last && { borderBottomWidth: 1, borderBottomColor: c.sunken }, { opacity: pressed ? 0.6 : 1 }]}>
+      <RNView style={{ flex: 1 }}>
+        <SectionTitle icon={icon} tone={tone} title={title} hint={hint} header={false} />
+      </RNView>
+      <Icon name="forward" size={18} color={c.textMuted} />
+    </Pressable>
+  );
+}
