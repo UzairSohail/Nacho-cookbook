@@ -10,7 +10,7 @@ const H = '11111111-1111-4111-8111-111111111111';
 function empty(): State {
   return {
     householdId: H,
-    settings: { householdSize: 2, system: 'metric', standard: 'au' },
+    settings: { householdSize: 2, system: 'metric', standard: 'metric' },
     recipes: [],
     ingredients: [],
     plan: [],
@@ -90,8 +90,8 @@ describe('syncing state through database rows', () => {
     expect(state.plan).toHaveLength(2);
     expect(state.plan.find((e) => e.date === '2026-11-10')!.recipeId).toBe(pancakes.id);
 
-    step({ type: 'settings', patch: { householdSize: 4, standard: 'us' } });
-    expect(state.settings).toEqual({ householdSize: 4, system: 'metric', standard: 'us' });
+    step({ type: 'settings', patch: { householdSize: 4, system: 'imperial' } });
+    expect(state.settings).toEqual({ householdSize: 4, system: 'imperial', standard: 'metric' });
     expect(rows.households[0].household_size).toBe(4);
 
     step({ type: 'generateList', range: { start: '2026-11-09', end: '2026-11-22' } });

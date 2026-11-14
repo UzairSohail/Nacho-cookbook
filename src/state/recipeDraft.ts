@@ -48,8 +48,6 @@ export interface RecipeDraft {
   prepMinutes: string;
   cookMinutes: string;
   keepsForDays: string;
-  /** Written with US cups and spoons. */
-  usMeasures: boolean;
   tags: string;
   sourceUrl: string;
   notes: string;
@@ -70,7 +68,7 @@ export const blankStep = (): StepLine => ({ key: key(), text: '' });
 export function emptyDraft(servings = 4): RecipeDraft {
   return {
     title: '', description: '', servings: String(servings), prepMinutes: '', cookMinutes: '', keepsForDays: '',
-    usMeasures: false, tags: '', sourceUrl: '', notes: '', photoUrls: [],
+    tags: '', sourceUrl: '', notes: '', photoUrls: [],
     lines: [blankIngredient(), blankIngredient(), blankIngredient()],
     steps: [blankStep()],
   };
@@ -142,7 +140,6 @@ export function draftFromRecipe(recipe: Recipe, catalog: Map<string, Ingredient>
     prepMinutes: numText(recipe.prepMinutes),
     cookMinutes: numText(recipe.cookMinutes),
     keepsForDays: numText(recipe.keepsForDays),
-    usMeasures: recipe.measureStandard === 'us',
     tags: (recipe.tags ?? []).join(', '),
     sourceUrl: recipe.sourceUrl ?? '',
     notes: recipe.notes ?? '',
@@ -266,8 +263,8 @@ export function draftToRecipe(d: RecipeDraft, base?: Recipe): RecipeInput {
     title: d.title.trim(),
     description: opt(d.description),
     servings: Number(d.servings.trim()),
-    // The editor only offers US or the household's own; keep any other standard an import set.
-    measureStandard: d.usMeasures ? 'us' : base?.measureStandard === 'us' ? null : (base?.measureStandard ?? null),
+    // Every recipe uses the app's one cup and spoon standard.
+    measureStandard: null,
     keepsForDays: int(d.keepsForDays) ?? null,
     prepMinutes: int(d.prepMinutes),
     cookMinutes: int(d.cookMinutes),

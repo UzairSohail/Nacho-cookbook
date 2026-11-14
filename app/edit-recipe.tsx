@@ -257,19 +257,6 @@ export default function EditRecipeScreen() {
           </Field>
         </RNView>
 
-        <RNView style={styles.gap}>
-          <Text variant="label">CUPS AND SPOONS</Text>
-          <Segmented
-            accessibilityLabel="Cups and spoons"
-            options={[['ours', 'Ours'], ['us', 'US (American recipe)']] as const}
-            value={draft.usMeasures ? 'us' : 'ours'}
-            onChange={(v) => set({ usMeasures: v === 'us' })}
-          />
-          <Text variant="muted">
-            Pick US for recipes from American sites, so spoons are converted and cups are labelled.
-          </Text>
-        </RNView>
-
         <IngredientsEditor draft={draft} errors={errors} set={set} setLine={setLine} />
         <StepsEditor
           steps={draft.steps}
