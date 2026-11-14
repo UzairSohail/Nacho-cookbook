@@ -168,12 +168,16 @@ const RETRY_PAUSE_MS = 2_000;
  * Groq's free tier, used when every Gemini model fails and the GROQ_API_KEY
  * secret is set (console.groq.com/keys). Override with the GROQ_MODEL secret.
  */
-export const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+export const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b';
 /**
  * Groq models tried in turn after the default, when one is rate-limited (each
  * model has its own free allowance), retired or gives an unreadable answer.
+ * Checked live 2026-11-14: only the gpt-oss models answer for this key; the
+ * Llama, Qwen and Kimi models are gone (404).
  */
-export const FALLBACK_GROQ_MODELS = ['meta-llama/llama-4-scout-17b-16e-instruct', 'llama-3.1-8b-instant'];
+export const FALLBACK_GROQ_MODELS = ['openai/gpt-oss-20b'];
+/** Reasoning models (gpt-oss) think before answering; sorting needs little of it. */
+const isReasoningModel = (model: string) => /gpt-oss|qwen3|deepseek-r1/i.test(model);
 /** Time kept back for Groq when Gemini is struggling. */
 const GROQ_RESERVE_MS = 15_000;
 /** The longest one Groq model gets (Groq usually answers in a second or two). */
@@ -352,6 +356,7 @@ export async function askGroq(
     body: JSON.stringify({
       model: opts.model || DEFAULT_GROQ_MODEL,
       temperature: 0,
+      ...(isReasoningModel(opts.model || DEFAULT_GROQ_MODEL) ? { reasoning_effort: 'low' } : {}),
       response_format: { type: 'json_object' },
       messages: [
         {
@@ -427,11 +432,22 @@ export async function checkGroq(options: { apiKey?: string; model?: string; fetc
     }
   };
   const headers = { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` };
-  const lookup = await timed(`https://api.groq.com/openai/v1/models/${encodeURIComponent(model)}`, { headers });
+  const list = await timed('https://api.groq.com/openai/v1/models', { headers });
+  let models: string[] | undefined;
+  try {
+    models = (JSON.parse(list.body ?? '') as { data?: { id?: string }[] }).data?.map((m) => m.id ?? '').filter(Boolean).sort();
+  } catch {
+    models = undefined;
+  }
   const reply = await timed('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers,
-    body: JSON.stringify({ model, max_tokens: 10, messages: [{ role: 'user', content: 'Reply with the word ok.' }] }),
+    body: JSON.stringify({
+      model,
+      max_tokens: 300,
+      ...(isReasoningModel(model) ? { reasoning_effort: 'low' } : {}),
+      messages: [{ role: 'user', content: 'Reply with the word ok.' }],
+    }),
   });
-  return { model, keySet: true, lookup, reply };
+  return { model, keySet: true, models: models ?? list, reply };
 }
