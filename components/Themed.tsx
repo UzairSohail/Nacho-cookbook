@@ -102,6 +102,10 @@ const ICONS = {
   bowl: { ios: 'leaf', android: 'rice_bowl' },
   bakery: { ios: 'birthday.cake', android: 'bakery_dining' },
   meal: { ios: 'fork.knife', android: 'restaurant' },
+  cook: { ios: 'frying.pan', android: 'skillet' },
+  timer: { ios: 'timer', android: 'timer' },
+  pause: { ios: 'pause.fill', android: 'pause' },
+  play: { ios: 'play.fill', android: 'play_arrow' },
 } as const satisfies Record<string, { ios: string; android: string }>;
 
 export type IconName = keyof typeof ICONS;

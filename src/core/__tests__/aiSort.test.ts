@@ -390,6 +390,34 @@ describe('Gemini model fallback', () => {
     expect(groqBodies[0].response_format).toEqual({ type: 'json_object' });
     expect(groqBodies[0].messages[0].content).toMatch(/ingredientGroups/);
     expect(groqBodies[0].messages[1].content).toContain('the caption');
+    expect(r.aiName).toBe('Groq');
+  });
+
+  it('tries the next Groq model when one is rate-limited or answers badly', async () => {
+    const asked: string[] = [];
+    const fetchImpl = vi.fn(async (u: string, init: RequestInit) => {
+      if (!u.includes('api.groq.com')) return new Response('{"error":{"message":"high demand"}}', { status: 503 });
+      const { model } = JSON.parse(String(init.body));
+      asked.push(model);
+      if (asked.length === 1) return new Response('{"error":{"message":"Rate limit reached"}}', { status: 429 });
+      if (asked.length === 2) return new Response(JSON.stringify({ choices: [{ message: { content: 'not json' } }] }));
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(answer) } }] }));
+    }) as unknown as typeof fetch;
+    const r = await sortWithGemini('caption', '', { apiKey: 'k', groqApiKey: 'g', groqModel: 'my-model', fetchImpl, retryPauseMs: 0 });
+    expect(r.aiName).toBe('Groq');
+    expect(asked).toEqual(['my-model', 'llama-3.3-70b-versatile', 'meta-llama/llama-4-scout-17b-16e-instruct']);
+  });
+
+  it('says Gemini sorted it when Gemini answers, and never asks Groq', async () => {
+    const fetchImpl = vi.fn(async () => geminiReply(answer)) as unknown as typeof fetch;
+    const r = await sortWithGemini('caption', '', { apiKey: 'k', groqApiKey: 'g', fetchImpl });
+    expect(r.aiName).toBe('Gemini');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('names both AIs when neither can answer', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{"error":{"message":"down"}}', { status: 503 })) as unknown as typeof fetch;
+    await expect(sortWithGemini('x', '', { apiKey: 'k', groqApiKey: 'g', fetchImpl, retryPauseMs: 0 })).rejects.toThrow(/Neither Gemini nor Groq/);
   });
 
   it('works with only a Groq key, and says what Groq said when it fails too', async () => {

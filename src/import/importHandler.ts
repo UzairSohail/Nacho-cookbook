@@ -6,7 +6,7 @@
  * POST { url } (or GET ?url=) → { recipe }, or { error, code } with a message to show.
  * For signed-in people the page's recipe is then tidied by AI (or, with no
  * recipe data on the page, found in the page's words by AI).
- * POST { text, sourceUrl? } → { recipe } sorted by AI (Gemini, see aiSort.ts), for
+ * POST { text, sourceUrl? } → { recipe } sorted by AI (Gemini, then Groq; see aiSort.ts), for
  * signed-in people only. The app falls back to its own rules when this fails.
  * POST { shop: ShopAiRequest } → { plan } : Gemini's pick of what to buy for each
  * shopping list line (see src/core/shopAi.ts), for signed-in people only.
@@ -18,7 +18,7 @@
 import { pageText, recipeAsText, withPageDetails } from '@/src/core/recipeForAi';
 import { planFromAnswer, shopGeminiRequest, ShopAiAnswerError, shopRequestProblem, type ShopAiRequest } from '@/src/core/shopAi';
 import { extractRecipe, NoRecipeFoundError, type ImportedRecipe } from '@/src/core/recipeImport';
-import { AiSortError, askGemini, checkGemini, MAX_TEXT_LENGTH, sortWithGemini } from './aiSort';
+import { AiSortError, askGemini, checkGemini, checkGroq, MAX_TEXT_LENGTH, sortWithGemini } from './aiSort';
 import { fetchPage, ImportError, NO_RECIPE_MESSAGE } from './pageFetch';
 import { checkPhotoSources, findRecipePhoto, searchableTitle } from './recipePhoto';
 
@@ -142,7 +142,7 @@ async function sortPageWithAi(
   url: string,
   found: ImportedRecipe | null,
 ): Promise<{ recipe: ImportedRecipe } | { reason: string }> {
-  if (!env('GEMINI_API_KEY') && !env('GROQ_API_KEY')) return { reason: 'the Gemini key isn’t set up on the import helper.' };
+  if (!env('GEMINI_API_KEY') && !env('GROQ_API_KEY')) return { reason: 'no AI key (Gemini or Groq) is set up on the import helper.' };
   if (!(await isSignedIn(req))) return { reason: 'the import helper couldn’t confirm you’re signed in.' };
   const text = found ? recipeAsText(found) : pageText(html);
   if (text.trim().length < 40) return { reason: 'the page had too little text.' };
@@ -161,6 +161,11 @@ export async function handleImport(req: Request): Promise<Response> {
     const asked = new URL(req.url).searchParams.get('model');
     const model = asked && /^gemini-[\w.-]{1,60}$/.test(asked) ? asked : env('GEMINI_MODEL');
     return json(await checkGemini({ apiKey: env('GEMINI_API_KEY'), model }));
+  }
+  if (req.method === 'GET' && new URL(req.url).searchParams.get('check') === 'groq') {
+    const asked = new URL(req.url).searchParams.get('model');
+    const model = asked && /^[\w./-]{1,80}$/.test(asked) ? asked : env('GROQ_MODEL');
+    return json(await checkGroq({ apiKey: env('GROQ_API_KEY'), model }));
   }
   if (req.method === 'GET' && new URL(req.url).searchParams.get('check') === 'photos') {
     return json(await checkPhotoSources({ pexelsApiKey: env('PEXELS_API_KEY') }));

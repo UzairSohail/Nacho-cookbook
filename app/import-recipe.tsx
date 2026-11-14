@@ -83,7 +83,7 @@ export default function ImportRecipeScreen() {
     try {
       const recipe = await importRecipe(address);
       setPendingImport(draftFromImport(recipe, state.settings.householdSize));
-      router.replace({ pathname: '/edit-recipe', params: { imported: '1', sortedBy: recipe.foundBy === 'ai' ? 'ai' : 'rules', aiNote: recipe.aiNote ?? '' } });
+      router.replace({ pathname: '/edit-recipe', params: { imported: '1', sortedBy: recipe.foundBy === 'ai' ? 'ai' : 'rules', aiName: recipe.aiName ?? '', aiNote: recipe.aiNote ?? '' } });
     } catch (e) {
       setError(e instanceof ImportError ? e.message : 'Something went wrong reading that page. Try again, or add it by hand.');
       try {
@@ -128,7 +128,7 @@ export default function ImportRecipeScreen() {
       // Sorted by AI when signed in and online, by the app's own rules otherwise.
       const { recipe, sortedBy } = await sortRecipeText(text, failedUrl ?? '');
       setPendingImport(draftFromImport(recipe, state.settings.householdSize));
-      router.replace({ pathname: '/edit-recipe', params: { imported: photoPages > 0 ? 'photo' : 'text', sortedBy, aiNote: recipe.aiNote ?? '' } });
+      router.replace({ pathname: '/edit-recipe', params: { imported: photoPages > 0 ? 'photo' : 'text', sortedBy, aiName: recipe.aiName ?? '', aiNote: recipe.aiNote ?? '' } });
     } catch (e) {
       setError(
         e instanceof NoRecipeTextError
