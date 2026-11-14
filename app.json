@@ -21,7 +21,8 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.nachocookbook.app",
       "permissions": [
-        "android.permission.REQUEST_INSTALL_PACKAGES"
+        "android.permission.REQUEST_INSTALL_PACKAGES",
+        "android.permission.VIBRATE"
       ]
     },
     "web": {
