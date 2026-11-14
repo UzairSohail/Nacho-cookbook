@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
 import { RecipePhoto } from '@/components/RecipePhoto';
@@ -20,7 +20,7 @@ import {
   type MeasureView,
   type ScaledIngredient,
 } from '@/src/core';
-import { setMeasureView, useMeasureView } from '@/src/state/measureView';
+import { useMeasureView } from '@/src/state/measureView';
 import { periodName, usePlanPeriod } from '@/src/state/planPeriod';
 import { recipeNeedsRepair, repairRecipe } from '@/src/state/recipeDraft';
 import { useCatalog, useRecipeMap, useStore } from '@/src/state/store';
@@ -34,7 +34,10 @@ export default function RecipeScreen() {
   const insets = useSafeAreaInsets();
   const period = usePlanPeriod();
   const { system, standard } = state.settings;
-  const measureView = useMeasureView();
+  // Opens in the default from Settings; switching here is just for this visit.
+  const defaultView = useMeasureView();
+  const [measureView, setMeasureView] = useState<MeasureView>(defaultView);
+  useEffect(() => setMeasureView(defaultView), [defaultView]);
 
   const [factor, setFactor] = useState(1);
   const [editing, setEditing] = useState<number | null>(null);
@@ -223,9 +226,8 @@ export default function RecipeScreen() {
             <Segmented<MeasureView>
               accessibilityLabel="Show amounts"
               options={[
-                ['written', 'As written'],
-                ['cups', 'Cups'],
                 ['metric', 'Metric'],
+                ['cups', 'Cups'],
               ]}
               value={measureView}
               onChange={setMeasureView}

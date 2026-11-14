@@ -38,14 +38,15 @@ export interface KitchenAmount {
   note?: string;
 }
 
-/** How the recipe page shows amounts: as the recipe was written, in cups, or in grams and ml. */
-export type MeasureView = 'written' | 'cups' | 'metric';
+/** How the recipe page shows amounts: in grams and ml, or in cups. */
+export type MeasureView = 'metric' | 'cups';
 
 export interface KitchenOptions extends MeasureOptions {
   /** The ingredient's name, used for tips like "beat 1 egg and use half" and to guess its density. */
   name?: string;
   /** Grams per ml, if the ingredient has one saved. */
   density?: number | null;
+  /** Leave out to show the amount in the unit the recipe was written in. */
   view?: MeasureView;
 }
 
@@ -66,8 +67,8 @@ export function kitchenAmount(
   const household: MeasureStandard = opts.standard ?? 'metric';
   const source: MeasureStandard = opts.sourceStandard ?? household;
 
-  const view = opts.view ?? 'written';
-  if (view !== 'written') {
+  const view = opts.view;
+  if (view) {
     const base = toBase(quantity, known, { standard: source }); // g or ml
     const volume = dimensionOf(known) === 'volume';
     const density = opts.density && opts.density > 0 ? opts.density : guessDensity(opts.name);

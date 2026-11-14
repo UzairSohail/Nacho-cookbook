@@ -1,15 +1,16 @@
 /**
- * How recipe amounts are shown: as written, in cups, or in grams and ml.
- * Saved on this device only, like the plan period; each person picks their own.
+ * Whether recipes open showing grams and ml (metric, the default) or cups.
+ * Picked in Settings and saved on this device only, like the plan period;
+ * each person picks their own. A recipe page can still switch for a look.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSyncExternalStore } from 'react';
 
 import type { MeasureView } from '@/src/core';
 
-const KEY = 'nacho.measureView';
-const VIEWS: readonly MeasureView[] = ['written', 'cups', 'metric'];
-let view: MeasureView = 'written';
+const KEY = 'nacho.measureViewDefault';
+const VIEWS: readonly MeasureView[] = ['metric', 'cups'];
+let view: MeasureView = 'metric';
 const listeners = new Set<() => void>();
 
 const notify = () => listeners.forEach((l) => l());

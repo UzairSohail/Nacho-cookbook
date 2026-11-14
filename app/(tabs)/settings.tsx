@@ -19,7 +19,8 @@ import {
 } from '@/components/Themed';
 import { Fonts } from '@/constants/Colors';
 import { useAuth } from '@/src/backend/auth';
-import { KITCHEN_STANDARD, spoonSize, type UnitSystem } from '@/src/core';
+import { KITCHEN_STANDARD, spoonSize, type MeasureView, type UnitSystem } from '@/src/core';
+import { setMeasureView, useMeasureView } from '@/src/state/measureView';
 import { setPlanPeriod, usePlanPeriod } from '@/src/state/planPeriod';
 import { useStore, type SyncInfo } from '@/src/state/store';
 import { formatMb } from '@/src/core/appUpdate';
@@ -41,6 +42,7 @@ export default function SettingsScreen() {
   const auth = useAuth();
   const c = useTheme();
   const { settings } = state;
+  const measureView = useMeasureView();
   const [find, setFind] = useState('');
   const staples = new Set(state.pantry);
   const q = find.trim().toLowerCase();
@@ -96,7 +98,14 @@ export default function SettingsScreen() {
         <PlanPeriodCard />
 
         <Card style={styles.gap}>
-          <SectionTitle icon="measure" tone={2} title="Units and measures" hint="Used for the shopping list and recipes shown as written" />
+          <SectionTitle icon="measure" tone={2} title="Units and measures" hint="How recipes show their amounts" />
+          <Segmented<MeasureView>
+            accessibilityLabel="Recipes open in"
+            options={[['metric', 'Metric (g, ml)'], ['cups', 'Cups']]}
+            value={measureView}
+            onChange={setMeasureView}
+          />
+          <Text variant="label" style={{ marginTop: 6 }}>SHOPPING LIST UNITS</Text>
           <Segmented<UnitSystem>
             accessibilityLabel="Units"
             options={[['metric', 'Metric'], ['imperial', 'Imperial']]}
