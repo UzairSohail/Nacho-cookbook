@@ -10,4 +10,5 @@ export * from './prices';
 export * from './recipeSearch';
 export * from './shopAi';
 export * from './kitchenAmount';
+export * from './pantry';
 export * from './cookMode';

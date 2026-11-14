@@ -33,7 +33,7 @@ export function PriceSummary({
   totals,
   status,
   updated,
-  staples,
+  atHome,
   onUseCheapest,
   ai,
 }: {
@@ -43,8 +43,8 @@ export function PriceSummary({
   onUseCheapest: () => void;
   status: PriceStatus;
   updated: string | null;
-  /** Pantry staples on the list, which aren't counted. */
-  staples: number;
+  /** Lines already at home (in the pantry), which aren't counted. */
+  atHome: number;
 }) {
   const c = useTheme();
   if (status === 'loading' && !totals.priced) {
@@ -77,7 +77,7 @@ export function PriceSummary({
         : 'coles'
       : null;
   const notes: string[] = [];
-  if (staples) notes.push(`Pantry staples aren’t counted (${staples}).`);
+  if (atHome) notes.push(`${atHome} already at home ${atHome === 1 ? 'isn’t' : 'aren’t'} counted.`);
   if (totals.unpriced) notes.push(`${totals.unpriced} ${totals.unpriced === 1 ? 'item has' : 'items have'} no price.`);
   return (
     <Card style={styles.summary}>

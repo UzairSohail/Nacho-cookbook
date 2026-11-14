@@ -86,6 +86,7 @@ function RootLayoutNav() {
           <Stack.Screen name="cook/[id]" options={{ headerShown: false, gestureEnabled: false }} />
           <Stack.Screen name="edit-recipe" options={{ title: 'New recipe' }} />
           <Stack.Screen name="import-recipe" options={{ title: 'Import a recipe' }} />
+          <Stack.Screen name="pantry" options={{ title: 'Pantry' }} />
           <Stack.Screen name="expo-sharing" options={{ title: 'Import a recipe' }} />
         </Stack.Protected>
       </Stack>
