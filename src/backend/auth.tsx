@@ -163,7 +163,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async signUp(email, password) {
         if (!supabase) return { error: 'Sign-in is not set up yet.', needsConfirmation: false };
-        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+        // Send the confirmation link back to this web address (or the live web app from Android),
+        // so it never falls back to an old Site URL in Supabase.
+        const emailRedirectTo = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin + webPath('/') : WEB_APP_URL;
+        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo } });
         return { error: error ? friendlyError(error.message) : null, needsConfirmation: !error && !data.session };
       },
       async signOut() {
