@@ -39,7 +39,7 @@ export interface State {
   recipes: Recipe[];
   ingredients: Ingredient[];
   plan: PlanEntry[];
-  /** Ingredient ids of pantry staples. */
+  /** Ingredient ids of things the household keeps at home (the pantry). Shared by the household. */
   pantry: string[];
   list: ListItem[];
   dismissedKeys: string[];
@@ -53,6 +53,10 @@ export type RecipeInput = Omit<Recipe, 'ingredients'> & {
 export type Action =
   | { type: 'settings'; patch: Partial<Settings> }
   | { type: 'togglePantry'; ingredientId: string }
+  /** Pantry: add something by name, making it a known ingredient first if it isn't one yet (e.g. "Baby corn"). */
+  | { type: 'addToPantry'; name: string }
+  /** Shopping list: "we have this at home". The line's ingredient joins the pantry, so it moves off the list. */
+  | { type: 'pantryFromItem'; id: string }
   | { type: 'setMeal'; date: string; slot: MealSlot; recipeId: string | null; servings?: number }
   | { type: 'setMealServings'; entryId: string; servings: number }
   /** Planner: put a recipe on the list for a week or fortnight, then refresh the shopping list for it. */
@@ -91,6 +95,28 @@ export function reducer(state: State, action: Action): State {
       return {
         ...state,
         pantry: has ? state.pantry.filter((id) => id !== action.ingredientId) : [...state.pantry, action.ingredientId],
+      };
+    }
+    case 'addToPantry': {
+      const name = action.name.trim();
+      if (!name) return state;
+      // "baby corn" becomes "Baby corn", like the names recipes bring in.
+      const { state: next, ingredient } = withIngredientNamed(state, name.charAt(0).toUpperCase() + name.slice(1));
+      return next.pantry.includes(ingredient.id) ? next : { ...next, pantry: [...next.pantry, ingredient.id] };
+    }
+    case 'pantryFromItem': {
+      const item = state.list.find((i) => i.id === action.id);
+      if (!item) return state;
+      if (item.key) {
+        const id = item.key.split('|')[0];
+        return state.pantry.includes(id) ? state : { ...state, pantry: [...state.pantry, id] };
+      }
+      // A line typed in by hand always stays on the list, so it goes once it's in the pantry.
+      const { state: next, ingredient } = withIngredientNamed(state, item.name, item.aisle);
+      return {
+        ...next,
+        pantry: next.pantry.includes(ingredient.id) ? next.pantry : [...next.pantry, ingredient.id],
+        list: next.list.filter((i) => i.id !== item.id),
       };
     }
     case 'setMeal': {
@@ -228,6 +254,20 @@ function withListFor(state: State, range: DateRange): State {
     standard: state.settings.standard,
   });
   return { ...state, list: reconcileList(state.list, items, new Set(state.dismissedKeys), uuid) };
+}
+
+/** The household's ingredient with this name (ignoring case), added with a guessed aisle if there isn't one. */
+function withIngredientNamed(state: State, rawName: string, aisle?: Aisle): { state: State; ingredient: Ingredient } {
+  const existing = ingredientByName(state, rawName);
+  if (existing) return { state, ingredient: existing };
+  const name = rawName.trim();
+  const ingredient: Ingredient = {
+    id: ingredientIdForName(state.householdId, name),
+    name,
+    aisle: aisle ?? guessAisle(name),
+    density: null,
+  };
+  return { state: { ...state, ingredients: [...state.ingredients, ingredient] }, ingredient };
 }
 
 const ingredientByName = (state: State, name: string) => {

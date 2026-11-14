@@ -44,7 +44,7 @@ describe('generateShoppingList', () => {
     expect(find(items, 'garlic')).toMatchObject({ quantity: 6, unit: 'cloves' });
   });
 
-  it('keeps pantry staples on the list', () => {
+  it('keeps pantry things on the generated list (the screen moves them to "already at home")', () => {
     const { items } = generate([e('a', '2026-11-09', 'pancakes', 4)]);
     expect(find(items, 'salt')).toBeDefined();
   });

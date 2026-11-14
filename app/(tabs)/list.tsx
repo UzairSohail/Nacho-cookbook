@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, View as RNView } from 'react-native';
 
@@ -7,11 +8,11 @@ import {
   Card,
   Check,
   Chip,
+  Icon,
   IconButton,
   ScreenHeader,
   Segmented,
   TAB_BAR_SPACE,
-  Tag,
   Text,
   TextInput,
   useTheme,
@@ -28,6 +29,7 @@ import {
   listToText,
   parseQuantity,
   periodRange,
+  splitByPantry,
   today,
   type Ingredient,
   type LineCost,
@@ -53,6 +55,7 @@ export default function ShoppingListScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [priceOpenId, setPriceOpenId] = useState<string | null>(null);
+  const [showAtHome, setShowAtHome] = useState(false);
   const prices = usePriceData();
   const shopAi = useShopAi();
 
@@ -81,21 +84,21 @@ export default function ShoppingListScreen() {
   };
 
   const share = () => {
-    Share.share({ message: listToText(state.list, (q, u) => amount(q, u)) }).catch(() => {});
+    Share.share({ message: listToText(toGet, (q, u) => amount(q, u)) }).catch(() => {});
   };
+
+  // Lines for things in the pantry move to "Already at home": not bought, counted or shared, but still in view.
+  const { toGet, atHome } = splitByPantry(state.list, state.pantry);
 
   // Unknown aisle names from older rows land in Other rather than vanishing.
   const aisleOf = (item: ListItem) => (AISLE_ORDER.includes(item.aisle) ? item.aisle : 'other');
-  const aisles = AISLE_ORDER.filter((a) => state.list.some((i) => aisleOf(i) === a));
+  const aisles = AISLE_ORDER.filter((a) => toGet.some((i) => aisleOf(i) === a));
   // Within an aisle, things still to get come first, then what's already in the trolley.
   const inAisle = (aisle: string) =>
-    state.list
+    toGet
       .filter((i) => aisleOf(i) === aisle)
       .sort((a, b) => Number(a.checked) - Number(b.checked) || a.name.localeCompare(b.name));
-  const tickedCount = state.list.filter((i) => i.checked).length;
-  // Generated lines are keyed "<ingredient id>|<kind>", so staples can be flagged without storing anything extra.
-  const staples = new Set(state.pantry);
-  const isStaple = (item: ListItem) => !!item.key && staples.has(item.key.split('|')[0]);
+  const tickedCount = toGet.filter((i) => i.checked).length;
 
   // Each line's ingredient (for its price pick and density): by id for generated lines, by name for hand-added ones.
   const ingredientOf = useMemo(() => {
@@ -113,10 +116,9 @@ export default function ShoppingListScreen() {
     }
     return m;
   }, [state.list, ingredientOf, prices.data, standard, shopAi]);
-  const totals = totalsFor(state.list.filter((i) => !isStaple(i)).map((i) => costs.get(i.id)!));
-  const stapleCount = state.list.filter(isStaple).length;
-  // Gemini is asked about what's to be bought: not staples, which are checked in the cupboard first.
-  const toBuy = state.list.filter((i) => !isStaple(i));
+  const totals = totalsFor(toGet.map((i) => costs.get(i.id)!));
+  // Gemini is only asked about what's to be bought, not what's already at home.
+  const toBuy = toGet;
   const aiStale = linesToAsk(shopAi, toBuy).length;
   const aiAnswered = toBuy.length - aiStale;
   const nameOf = (id: string) => state.list.find((i) => i.id === id)?.name ?? 'another item';
@@ -127,7 +129,7 @@ export default function ShoppingListScreen() {
         eyebrow={rangeText}
         title="Shopping"
         right={
-          state.list.length ? (
+          toGet.length ? (
             <Button
               title="Share"
               icon="share"
@@ -152,24 +154,26 @@ export default function ShoppingListScreen() {
               setNote(null);
             }}
           />
-          {state.list.length ? (
+          {toGet.length ? (
             <RNView style={{ gap: 8 }}>
               <RNView style={styles.spread}>
                 <Text variant="heading" style={{ color: c.onInk }} accessibilityLiveRegion="polite">
-                  {tickedCount === state.list.length ? 'All ticked off!' : `${tickedCount} of ${state.list.length} ticked off`}
+                  {tickedCount === toGet.length ? 'All ticked off!' : `${tickedCount} of ${toGet.length} ticked off`}
                 </Text>
                 <Text style={{ fontSize: 13, color: c.inkMuted }}>
-                  {state.list.length - tickedCount ? `${state.list.length - tickedCount} to get` : 'Nice work'}
+                  {toGet.length - tickedCount ? `${toGet.length - tickedCount} to get` : 'Nice work'}
                 </Text>
               </RNView>
               <RNView style={[styles.progress, { backgroundColor: c.inkSunken }]}>
                 <RNView
-                  style={[styles.progressFill, { backgroundColor: c.accent, width: `${(tickedCount / state.list.length) * 100}%` }]}
+                  style={[styles.progressFill, { backgroundColor: c.accent, width: `${(tickedCount / toGet.length) * 100}%` }]}
                 />
               </RNView>
             </RNView>
           ) : (
-            <Text variant="heading" style={{ color: c.onInk }}>Make a list from the plan</Text>
+            <Text variant="heading" style={{ color: c.onInk }}>
+              {state.list.length ? 'Everything’s already at home' : 'Make a list from the plan'}
+            </Text>
           )}
           <Button title={state.list.length ? 'Update from plan' : 'Generate list'} icon="refresh" onPress={generate} />
           {note ? <Text style={{ color: c.onInk, fontFamily: Fonts.bodyBold, fontSize: 14 }}>{note}</Text> : null}
@@ -181,7 +185,7 @@ export default function ShoppingListScreen() {
         </Card>
 
         {state.list.length ? (
-          <PriceSummary totals={totals} status={prices.status} updated={prices.data?.updated ?? null} staples={stapleCount}
+          <PriceSummary totals={totals} status={prices.status} updated={prices.data?.updated ?? null} atHome={atHome.length}
             onUseCheapest={() => dispatch({ type: 'useCheapestStores' })}
             ai={{
               answered: aiAnswered,
@@ -210,6 +214,21 @@ export default function ShoppingListScreen() {
           <IconButton icon="add" tone="ink" size={50} label="Add item" onPress={addItem} />
         </RNView>
 
+        <Pressable
+          accessibilityRole="button"
+          accessibilityHint="Things you keep at home stay off the list"
+          onPress={() => router.push('/pantry')}
+          style={({ pressed }) => [styles.pantryLink, { backgroundColor: c.accentSoft, opacity: pressed ? 0.7 : 1 }]}>
+          <Icon name="pantry" size={20} color={c.onAccentSoft} />
+          <Text style={{ flex: 1, fontSize: 14, color: c.onAccentSoft }}>
+            <Text style={{ fontFamily: Fonts.bodyBold, color: c.onAccentSoft }}>Pantry</Text>
+            {state.pantry.length
+              ? ` · ${state.pantry.length} ${state.pantry.length === 1 ? 'thing' : 'things'} at home`
+              : ' · tick off what you already have'}
+          </Text>
+          <Icon name="forward" size={18} color={c.onAccentSoft} />
+        </Pressable>
+
         {aisles.map((aisle) => {
           const items = inAisle(aisle);
           const left = items.filter((i) => !i.checked).length;
@@ -227,7 +246,6 @@ export default function ShoppingListScreen() {
                     key={item.id}
                     item={item}
                     last={i === items.length - 1}
-                    staple={isStaple(item)}
                     amount={amount(item.quantity, item.unit)}
                     editing={editingId === item.id}
                     onEdit={() => setEditingId(editingId === item.id ? null : item.id)}
@@ -237,7 +255,10 @@ export default function ShoppingListScreen() {
                     data={prices.data}
                     coveredByName={costs.get(item.id)?.coveredBy ? nameOf(costs.get(item.id)!.coveredBy!) : null}
                     priceOpen={priceOpenId === item.id}
-                    showPrice={!isStaple(item) || !!costs.get(item.id)?.chosen}
+                    onHave={() => {
+                      if (editingId === item.id) setEditingId(null);
+                      dispatch({ type: 'pantryFromItem', id: item.id });
+                    }}
                     onTogglePrice={() => setPriceOpenId(priceOpenId === item.id ? null : item.id)}
                   />
                 ))}
@@ -245,6 +266,16 @@ export default function ShoppingListScreen() {
             </RNView>
           );
         })}
+
+        {atHome.length ? (
+          <AtHome
+            items={atHome}
+            open={showAtHome}
+            onToggle={() => setShowAtHome(!showAtHome)}
+            amount={(i) => amount(i.quantity, i.unit)}
+            onNeed={(i) => dispatch({ type: 'togglePantry', ingredientId: i.key!.split('|')[0] })}
+          />
+        ) : null}
 
         {state.list.length ? (
           tickedCount ? (
@@ -279,8 +310,6 @@ function lineCostFor(
 function Row({
   item,
   last,
-  showPrice,
-  staple,
   amount,
   editing,
   onEdit,
@@ -291,11 +320,10 @@ function Row({
   coveredByName,
   priceOpen,
   onTogglePrice,
+  onHave,
 }: {
   item: ListItem;
   last: boolean;
-  showPrice: boolean;
-  staple: boolean;
   amount: string;
   editing: boolean;
   onEdit: () => void;
@@ -306,6 +334,7 @@ function Row({
   coveredByName: string | null;
   priceOpen: boolean;
   onTogglePrice: () => void;
+  onHave: () => void;
 }) {
   const { dispatch } = useStore();
   const c = useTheme();
@@ -329,11 +358,6 @@ function Row({
             {amount ? <Text style={{ fontFamily: Fonts.bodyBold }}>{amount} </Text> : null}
             {item.name}
           </Text>
-          {staple && !item.checked ? (
-            <RNView style={{ marginVertical: 2 }}>
-              <Tag label="Staple · check the cupboard" tone="accent" />
-            </RNView>
-          ) : null}
           {item.sources.length ? (
             <Text variant="muted" style={[styles.small, { fontSize: 12, lineHeight: 16 }, item.checked && { color: c.textFaint }]} numberOfLines={editing ? undefined : 1}>
               {item.sources.join(', ')}
@@ -350,7 +374,7 @@ function Row({
             </Text>
           ) : null}
         </Pressable>
-        {showPrice ? <PriceTag cost={cost} open={priceOpen} onToggle={onTogglePrice} /> : null}
+        <PriceTag cost={cost} open={priceOpen} onToggle={onTogglePrice} />
       </RNView>
       {priceOpen ? (
         <PricePanel
@@ -402,9 +426,76 @@ function Row({
                 onEdit();
               }}
             />
+            <Button title="We have this" small kind="secondary" icon="pantry" onPress={onHave} />
             <Button title="Delete" small kind="secondary" icon="delete" onPress={() => dispatch({ type: 'deleteItem', id: item.id })} />
           </RNView>
+          <Text variant="muted" style={styles.small}>
+            “We have this” adds it to your pantry, so it stays off future lists until you say you need it.
+          </Text>
         </RNView>
+      ) : null}
+    </RNView>
+  );
+}
+
+/** Plan lines for things in the pantry: folded away at the bottom, each with a way back onto the list. */
+function AtHome({
+  items,
+  open,
+  onToggle,
+  amount,
+  onNeed,
+}: {
+  items: ListItem[];
+  open: boolean;
+  onToggle: () => void;
+  amount: (item: ListItem) => string;
+  onNeed: (item: ListItem) => void;
+}) {
+  const c = useTheme();
+  const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name));
+  return (
+    <RNView style={styles.aisle}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={onToggle}
+        style={[styles.spread, { paddingHorizontal: 4, alignItems: 'center' }]}>
+        <RNView style={{ flex: 1, gap: 2 }}>
+          <Text variant="subheading" style={{ fontSize: 19 }} accessibilityRole="header">Already at home</Text>
+          <Text variant="muted" style={styles.small}>
+            {items.length === 1 ? '1 thing' : `${items.length} things`} the plan needs that’s in your pantry, so it’s off the list
+          </Text>
+        </RNView>
+        <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 14, color: c.tint }}>{open ? 'Hide' : 'Show'}</Text>
+      </Pressable>
+      {open ? (
+        <Card style={{ paddingVertical: 0, paddingHorizontal: 14, borderRadius: 20 }}>
+          {sorted.map((item, i) => (
+            <RNView
+              key={item.id}
+              style={[styles.item, styles.itemRow, { borderBottomColor: c.sunken, borderBottomWidth: i === sorted.length - 1 ? 0 : 1 }]}>
+              <RNView style={styles.itemText}>
+                <Text style={{ fontSize: 15 }}>
+                  {amount(item) ? <Text style={{ fontFamily: Fonts.bodyBold }}>{amount(item)} </Text> : null}
+                  {item.name}
+                </Text>
+                {item.sources.length ? (
+                  <Text variant="muted" style={[styles.small, { fontSize: 12, lineHeight: 16 }]} numberOfLines={1}>
+                    {item.sources.join(', ')}
+                  </Text>
+                ) : null}
+              </RNView>
+              <Button
+                title="Need it"
+                small
+                kind="secondary"
+                accessibilityHint={`Takes ${item.name} out of the pantry and puts it back on the list`}
+                onPress={() => onNeed(item)}
+              />
+            </RNView>
+          ))}
+        </Card>
       ) : null}
     </RNView>
   );
@@ -422,6 +513,7 @@ const styles = StyleSheet.create({
   itemText: { flex: 1, minWidth: 0, gap: 2 },
   spread: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' },
   small: { fontSize: 13, lineHeight: 18 },
+  pantryLink: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 16, paddingHorizontal: 14, minHeight: 48 },
   progress: { height: 8, borderRadius: 4, overflow: 'hidden' },
   progressFill: { height: 8, borderRadius: 4 },
 });

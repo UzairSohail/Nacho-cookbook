@@ -1,15 +1,12 @@
 import { Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
-import { useState } from 'react';
+import { router } from 'expo-router';
 
 import {
   Button,
   Card,
-  Check,
   Icon,
-  IconButton,
   ScreenHeader,
-  SearchField,
   SectionTitle,
   Segmented,
   Stepper,
@@ -43,13 +40,10 @@ export default function SettingsScreen() {
   const c = useTheme();
   const { settings } = state;
   const measureView = useMeasureView();
-  const [find, setFind] = useState('');
-  const staples = new Set(state.pantry);
-  const q = find.trim().toLowerCase();
-  // Staples first so they're easy to review; the rest only once you search, since the list grows with every recipe.
-  const ingredients = [...state.ingredients]
-    .filter((i) => (q ? i.name.toLowerCase().includes(q) : staples.has(i.id)))
-    .sort((a, b) => Number(staples.has(b.id)) - Number(staples.has(a.id)) || a.name.localeCompare(b.name));
+  const pantryNames = state.ingredients
+    .filter((i) => state.pantry.includes(i.id))
+    .map((i) => i.name)
+    .sort((a, b) => a.localeCompare(b));
 
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -118,55 +112,26 @@ export default function SettingsScreen() {
           </Text>
         </Card>
 
-        <Card style={styles.gap}>
-          <SectionTitle
-            icon="pantry"
-            tone={3}
-            title="Pantry staples"
-            hint="Kept on the list, flagged so you check the cupboard first"
-          />
-          <SearchField value={find} onChangeText={setFind} placeholder="Find an ingredient to add" accessibilityLabel="Find an ingredient" />
-          {!q ? (
-            ingredients.length === 0 ? (
-              <Text variant="muted">No staples yet. Search above to add some.</Text>
-            ) : (
-              <RNView style={styles.chips}>
-                {ingredients.map((i) => (
-                  <RNView key={i.id} style={[styles.staple, { backgroundColor: c.accentSoft }]}>
-                    <Text style={{ fontFamily: Fonts.bodyMedium, fontSize: 14, color: c.onAccentSoft }}>{i.name}</Text>
-                    <IconButton
-                      icon="close"
-                      size={28}
-                      iconSize={14}
-                      tone="clear"
-                      label={`Remove ${i.name}`}
-                      onPress={() => dispatch({ type: 'togglePantry', ingredientId: i.id })}
-                    />
-                  </RNView>
-                ))}
+        <Pressable accessibilityRole="button" onPress={() => router.push('/pantry')}>
+          <Card style={styles.gap}>
+            <RNView style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <RNView style={{ flex: 1 }}>
+                <SectionTitle
+                  icon="pantry"
+                  tone={3}
+                  header={false}
+                  title="Pantry"
+                  hint={
+                    pantryNames.length
+                      ? `${pantryNames.length} at home: ${pantryNames.slice(0, 4).join(', ')}${pantryNames.length > 4 ? '…' : ''}`
+                      : 'Things you keep at home stay off the shopping list'
+                  }
+                />
               </RNView>
-            )
-          ) : ingredients.length === 0 ? (
-            <Text variant="muted">No ingredients match “{find}”.</Text>
-          ) : (
-            <RNView>
-              {ingredients.map((i, n) => {
-                const on = staples.has(i.id);
-                return (
-                  <Pressable
-                    key={i.id}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: on }}
-                    onPress={() => dispatch({ type: 'togglePantry', ingredientId: i.id })}
-                    style={[styles.result, n < ingredients.length - 1 && { borderBottomWidth: 1, borderBottomColor: c.sunken }]}>
-                    <Check checked={on} size={24} />
-                    <Text>{i.name}</Text>
-                  </Pressable>
-                );
-              })}
+              <Icon name="forward" size={20} color={c.textMuted} />
             </RNView>
-          )}
-        </Card>
+          </Card>
+        </Pressable>
 
         {updatesSupported ? <AppUpdateCard /> : null}
       </RNView>
@@ -182,9 +147,6 @@ const styles = StyleSheet.create({
   householdTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   householdIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   invite: { borderRadius: 14, padding: 12, gap: 2 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  staple: { flexDirection: 'row', alignItems: 'center', gap: 2, borderRadius: 18, paddingLeft: 14, paddingRight: 4, minHeight: 36 },
-  result: { flexDirection: 'row', gap: 12, alignItems: 'center', minHeight: 48 },
 });
 
 function PlanPeriodCard() {
