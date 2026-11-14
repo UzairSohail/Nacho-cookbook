@@ -42,6 +42,8 @@ export interface ImportedRecipe {
   sourceUrl: string;
   /** Why AI didn't sort it, when it was tried and wasn't available, for troubleshooting. */
   aiNote?: string;
+  /** Which AI sorted it ('Gemini' or 'Groq'), when foundBy is 'ai'. */
+  aiName?: string;
   /** Which method found it, for troubleshooting. */
   foundBy: 'json-ld' | 'recipe-card' | 'microdata' | 'headings' | 'pasted' | 'ai';
 }
