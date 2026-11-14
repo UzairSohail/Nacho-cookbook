@@ -313,6 +313,20 @@ export default function RecipeScreen() {
 
           <RNView style={styles.section}>
             <Text variant="heading" accessibilityRole="header">Method</Text>
+            {recipe.steps.length ? (
+              <Button
+                title="Start cooking mode"
+                icon="cook"
+                kind="ink"
+                accessibilityHint="Big step-by-step view with timers that keeps the screen on"
+                onPress={() =>
+                  router.push({
+                    pathname: '/cook/[id]',
+                    params: { id: recipe.id, factor: String(factor), view: measureView },
+                  })
+                }
+              />
+            ) : null}
             {recipe.steps.map((step, i) => {
               // "Garlic Confit" names the steps below it; it isn't a step to number.
               if (!step.photoUrl && i < recipe.steps.length - 1 && looksLikeStepHeading(step.text)) {
