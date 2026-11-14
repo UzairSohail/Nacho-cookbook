@@ -386,7 +386,8 @@ describe('Gemini model fallback', () => {
     const r = await sortWithGemini('the caption', '', { apiKey: 'k', groqApiKey: 'g', fetchImpl, retryPauseMs: 0 });
     expect(r.title).toBe('Crispy chilli beef');
     expect(groqBodies).toHaveLength(1);
-    expect(groqBodies[0].model).toBe('llama-3.3-70b-versatile');
+    expect(groqBodies[0].model).toBe('openai/gpt-oss-120b');
+    expect(groqBodies[0]).toMatchObject({ reasoning_effort: 'low' });
     expect(groqBodies[0].response_format).toEqual({ type: 'json_object' });
     expect(groqBodies[0].messages[0].content).toMatch(/ingredientGroups/);
     expect(groqBodies[0].messages[1].content).toContain('the caption');
@@ -405,7 +406,7 @@ describe('Gemini model fallback', () => {
     }) as unknown as typeof fetch;
     const r = await sortWithGemini('caption', '', { apiKey: 'k', groqApiKey: 'g', groqModel: 'my-model', fetchImpl, retryPauseMs: 0 });
     expect(r.aiName).toBe('Groq');
-    expect(asked).toEqual(['my-model', 'llama-3.3-70b-versatile', 'meta-llama/llama-4-scout-17b-16e-instruct']);
+    expect(asked).toEqual(['my-model', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b']);
   });
 
   it('says Gemini sorted it when Gemini answers, and never asks Groq', async () => {
