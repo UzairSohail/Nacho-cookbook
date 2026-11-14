@@ -13,7 +13,7 @@ import {
   type Ingredient,
   type ListItem,
   type MealSlot,
-  type MeasureStandard,
+  KITCHEN_STANDARD,
   type PlanEntry,
   type Recipe,
   type UnitSystem,
@@ -157,7 +157,7 @@ export function rowsToState(rows: Rows, householdId: string): State {
   const settings: Settings = {
     householdSize: num(household?.household_size) ?? 2,
     system: (str(household?.unit_system) as UnitSystem) ?? 'metric',
-    standard: (str(household?.measure_standard) as MeasureStandard) ?? 'au',
+    standard: KITCHEN_STANDARD,
   };
 
   const byRecipe = <R extends Row>(list: R[]) => {
@@ -178,7 +178,7 @@ export function rowsToState(rows: Rows, householdId: string): State {
       title: String(r.title ?? ''),
       description: str(r.description),
       servings: num(r.servings) ?? 1,
-      measureStandard: (str(r.measure_standard) as MeasureStandard | undefined) ?? null,
+      measureStandard: null, // one standard for every recipe (KITCHEN_STANDARD)
       keepsForDays: num(r.keeps_for_days) ?? null,
       prepMinutes: num(r.prep_minutes),
       cookMinutes: num(r.cook_minutes),

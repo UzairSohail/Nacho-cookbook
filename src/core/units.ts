@@ -18,6 +18,13 @@ export type UnitSystem = 'metric' | 'imperial';
  */
 export type MeasureStandard = 'metric' | 'au' | 'us';
 
+/**
+ * The one cup and spoon standard the app uses for every recipe and household
+ * (250 ml cup, 15 ml tbsp, 5 ml tsp). Recipes are no longer flagged as US;
+ * a single standard keeps things simple. Change it here to switch everywhere.
+ */
+export const KITCHEN_STANDARD: MeasureStandard = 'metric';
+
 export interface UnitOptions {
   /** The cup and spoon sizes in use (the household's, or the recipe's when converting from it). */
   standard?: MeasureStandard;

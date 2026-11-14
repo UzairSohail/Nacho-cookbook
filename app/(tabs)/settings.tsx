@@ -19,49 +19,12 @@ import {
 } from '@/components/Themed';
 import { Fonts } from '@/constants/Colors';
 import { useAuth } from '@/src/backend/auth';
-import type { MeasureStandard, UnitSystem } from '@/src/core';
+import { KITCHEN_STANDARD, spoonSize, type MeasureView, type UnitSystem } from '@/src/core';
+import { setMeasureView, useMeasureView } from '@/src/state/measureView';
 import { setPlanPeriod, usePlanPeriod } from '@/src/state/planPeriod';
 import { useStore, type SyncInfo } from '@/src/state/store';
 import { formatMb } from '@/src/core/appUpdate';
 import { checkForUpdate, installUpdate, updatesSupported, useAppUpdate } from '@/src/updates/appUpdate';
-
-/** One of a few longer options, as a radio list with a detail on the right. */
-function RadioList<T extends string>({
-  options,
-  value,
-  onChange,
-  label,
-}: {
-  options: Array<[T, string, string]>;
-  value: T;
-  onChange: (v: T) => void;
-  label: string;
-}) {
-  const c = useTheme();
-  return (
-    <RNView accessibilityRole="radiogroup" accessibilityLabel={label}>
-      {options.map(([key, name, detail], i) => {
-        const on = value === key;
-        return (
-          <Pressable
-            key={key}
-            accessibilityRole="radio"
-            accessibilityState={{ checked: on, selected: on }}
-            onPress={() => onChange(key)}
-            style={({ pressed }) => [
-              styles.radio,
-              i < options.length - 1 && { borderBottomWidth: 1, borderBottomColor: c.sunken },
-              { opacity: pressed ? 0.6 : 1 },
-            ]}>
-            <RNView style={[styles.radioDot, on ? { borderWidth: 7, borderColor: c.tint } : { borderColor: c.borderStrong }]} />
-            <Text style={{ flex: 1, fontFamily: on ? Fonts.bodyBold : Fonts.body, fontSize: 15 }}>{name}</Text>
-            <Text variant="muted" style={{ fontSize: 13 }}>{detail}</Text>
-          </Pressable>
-        );
-      })}
-    </RNView>
-  );
-}
 
 function syncLabel(sync: SyncInfo): string {
   if (sync.mode === 'demo') return '';
@@ -79,6 +42,7 @@ export default function SettingsScreen() {
   const auth = useAuth();
   const c = useTheme();
   const { settings } = state;
+  const measureView = useMeasureView();
   const [find, setFind] = useState('');
   const staples = new Set(state.pantry);
   const q = find.trim().toLowerCase();
@@ -134,24 +98,24 @@ export default function SettingsScreen() {
         <PlanPeriodCard />
 
         <Card style={styles.gap}>
-          <SectionTitle icon="measure" tone={2} title="Units and measures" hint="US recipes are converted to these" />
+          <SectionTitle icon="measure" tone={2} title="Units and measures" hint="How recipes show their amounts" />
+          <Segmented<MeasureView>
+            accessibilityLabel="Recipes open in"
+            options={[['metric', 'Metric (g, ml)'], ['cups', 'Cups']]}
+            value={measureView}
+            onChange={setMeasureView}
+          />
+          <Text variant="label" style={{ marginTop: 6 }}>SHOPPING LIST UNITS</Text>
           <Segmented<UnitSystem>
             accessibilityLabel="Units"
             options={[['metric', 'Metric'], ['imperial', 'Imperial']]}
             value={settings.system}
             onChange={(system) => dispatch({ type: 'settings', patch: { system } })}
           />
-          <Text variant="label" style={{ marginTop: 6 }}>YOUR CUP AND SPOON SIZES</Text>
-          <RadioList<MeasureStandard>
-            label="Cup and spoon sizes"
-            options={[
-              ['au', 'Australian', '20 ml tbsp'],
-              ['metric', 'Metric', '15 ml tbsp'],
-              ['us', 'US', '237 ml cup'],
-            ]}
-            value={settings.standard}
-            onChange={(standard) => dispatch({ type: 'settings', patch: { standard } })}
-          />
+          <Text variant="muted" style={{ fontSize: 13 }}>
+            Every recipe uses the same cups and spoons: {spoonSize('cup', KITCHEN_STANDARD)} ml cup,{' '}
+            {spoonSize('tbsp', KITCHEN_STANDARD)} ml tbsp, {spoonSize('tsp', KITCHEN_STANDARD)} ml tsp.
+          </Text>
         </Card>
 
         <Card style={styles.gap}>
@@ -218,8 +182,6 @@ const styles = StyleSheet.create({
   householdTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   householdIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   invite: { borderRadius: 14, padding: 12, gap: 2 },
-  radio: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52 },
-  radioDot: { width: 22, height: 22, borderRadius: 11, borderWidth: 2 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   staple: { flexDirection: 'row', alignItems: 'center', gap: 2, borderRadius: 18, paddingLeft: 14, paddingRight: 4, minHeight: 36 },
   result: { flexDirection: 'row', gap: 12, alignItems: 'center', minHeight: 48 },

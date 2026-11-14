@@ -35,7 +35,6 @@ function curryDraft(): RecipeDraft {
     prepMinutes: '15',
     cookMinutes: '40',
     tags: 'dinner, curry, dinner',
-    usMeasures: true,
     lines: [
       ...linesFromText('500 g chicken thighs\nFor the sauce:\n1 cup cream\n2 cloves garlic, crushed\nSalt, to taste\n'),
       { kind: 'ingredient', key: 'blank', amount: '', unit: '', name: '', note: '', optional: false },
@@ -58,7 +57,7 @@ describe('recipe draft', () => {
     expect(hasErrors(validateDraft(d))).toBe(false);
     const r = draftToRecipe(d);
     expect(r.title).toBe('Butter chicken');
-    expect(r.measureStandard).toBe('us');
+    expect(r.measureStandard).toBeNull();
     expect(r.tags).toEqual(['dinner', 'curry']);
     expect(r.steps.map((s) => s.text)).toEqual(['Brown the chicken.', 'Add the sauce and simmer.']);
     expect(r.ingredients.map((i) => [i.name, i.quantity, i.unit, i.group, i.scalable])).toEqual([

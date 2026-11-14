@@ -1,15 +1,15 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, View as RNView } from 'react-native';
 
 import { RecipePhoto } from '@/components/RecipePhoto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, Card, Icon, IconButton, Tag, Text, TextInput, View, useTheme } from '@/components/Themed';
+import { Button, Card, Icon, IconButton, Segmented, Tag, Text, TextInput, View, useTheme } from '@/components/Themed';
 import { Fonts } from '@/constants/Colors';
 import {
-  formatAmount,
   formatFraction,
+  kitchenAmount,
   limitingFactor,
   looksLikeStepHeading,
   parseQuantity,
@@ -17,8 +17,10 @@ import {
   plannedRecipes,
   scaleIngredients,
   today,
+  type MeasureView,
   type ScaledIngredient,
 } from '@/src/core';
+import { useMeasureView } from '@/src/state/measureView';
 import { periodName, usePlanPeriod } from '@/src/state/planPeriod';
 import { recipeNeedsRepair, repairRecipe } from '@/src/state/recipeDraft';
 import { useCatalog, useRecipeMap, useStore } from '@/src/state/store';
@@ -32,6 +34,10 @@ export default function RecipeScreen() {
   const insets = useSafeAreaInsets();
   const period = usePlanPeriod();
   const { system, standard } = state.settings;
+  // Opens in the default from Settings; switching here is just for this visit.
+  const defaultView = useMeasureView();
+  const [measureView, setMeasureView] = useState<MeasureView>(defaultView);
+  useEffect(() => setMeasureView(defaultView), [defaultView]);
 
   const [factor, setFactor] = useState(1);
   const [editing, setEditing] = useState<number | null>(null);
@@ -87,14 +93,18 @@ export default function RecipeScreen() {
     setEditing(null);
   };
 
-  const amountText = (item: ScaledIngredient) => {
-    if (item.scaledQuantity == null) return '';
-    const a = formatAmount(item.scaledQuantity, item.unit, system, {
+  // Rounded to what you can measure: 1 egg not 0.92, 1 3/4 cups + 2 tbsp not 1 7/8 cups.
+  const amountFor = (item: ScaledIngredient) => {
+    if (item.scaledQuantity == null) return { text: '' };
+    const ingredient = catalog.get(item.ingredientId);
+    return kitchenAmount(item.scaledQuantity, item.unit, system, {
       standard,
-      sourceStandard: recipe.measureStandard,
+      name: ingredient?.name,
+      density: ingredient?.density,
+      view: measureView,
     });
-    return `${a.quantity}${a.unit ? ` ${a.unit}` : ''}`;
   };
+  const amountText = (item: ScaledIngredient) => amountFor(item).text;
 
   const needsRepair = recipeNeedsRepair(recipe, catalog);
   const repair = () => dispatch({ type: 'saveRecipe', recipe: repairRecipe(recipe, catalog) });
@@ -206,16 +216,6 @@ export default function RecipeScreen() {
             ) : null}
           </Card>
 
-          {recipe.measureStandard && recipe.measureStandard !== standard ? (
-            <Card tone="accent" style={styles.note}>
-              <Icon name="measure" size={20} color={c.onAccentSoft} />
-              <Text style={{ flex: 1, fontSize: 14, lineHeight: 20, color: c.onAccentSoft }}>
-                Written with {recipe.measureStandard === 'us' ? 'US' : recipe.measureStandard === 'au' ? 'Australian' : 'metric'}{' '}
-                cups and spoons. Spoons are converted to yours; cups are labelled.
-              </Text>
-            </Card>
-          ) : null}
-
           <RNView style={styles.section}>
             <RNView style={styles.spread}>
               <Text variant="heading" accessibilityRole="header">Ingredients</Text>
@@ -223,6 +223,15 @@ export default function RecipeScreen() {
                 {scaled.length} {scaled.length === 1 ? 'item' : 'items'}
               </Text>
             </RNView>
+            <Segmented<MeasureView>
+              accessibilityLabel="Show amounts"
+              options={[
+                ['metric', 'Metric'],
+                ['cups', 'Cups'],
+              ]}
+              value={measureView}
+              onChange={setMeasureView}
+            />
             <Text variant="muted" style={{ fontSize: 13 }}>Tap one to scale the recipe to what you have.</Text>
             {needsRepair ? (
               <Card style={styles.haveRow}>
@@ -259,11 +268,7 @@ export default function RecipeScreen() {
                           {item.note ? <Text variant="muted" style={{ fontSize: 15 }}> · {item.note}</Text> : null}
                           {item.optional ? <Text variant="muted" style={{ fontSize: 15 }}> (optional)</Text> : null}
                         </Text>
-                        {item.partialCount ? (
-                          <Text variant="muted">
-                            Round to {Math.floor(item.scaledQuantity!)} or {Math.ceil(item.scaledQuantity!)}
-                          </Text>
-                        ) : null}
+                        {amountFor(item).note ? <Text variant="muted">{amountFor(item).note}</Text> : null}
                       </RNView>
                     </Pressable>
                     {noAmount === index ? (
