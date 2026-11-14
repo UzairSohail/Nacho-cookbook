@@ -21,6 +21,9 @@ export const DEFAULT_GEMINI_MODEL = 'gemini-flash-lite-latest';
 /** Longer text than this isn't a recipe (and would eat the free quota). */
 export const MAX_TEXT_LENGTH = MAX_AI_TEXT;
 
+/** The AI that answered. */
+export type AiName = 'Gemini' | 'Groq';
+
 export class AiSortError extends Error {
   constructor(
     message: string,
@@ -114,7 +117,7 @@ const heading = (v: unknown) => str(v).replace(/:+$/, '').trim() || undefined;
  * 'no-recipe' when there are no ingredients, and 'failed' when the answer
  * isn't the expected JSON.
  */
-export function recipeFromAnswer(answer: string, sourceUrl = ''): ImportedRecipe {
+export function recipeFromAnswer(answer: string, sourceUrl = '', aiName?: AiName): ImportedRecipe {
   let data: Record<string, unknown>;
   try {
     data = JSON.parse(answer);
@@ -145,6 +148,7 @@ export function recipeFromAnswer(answer: string, sourceUrl = ''): ImportedRecipe
     tags: [],
     sourceUrl,
     foundBy: 'ai',
+    ...(aiName ? { aiName } : {}),
   };
 }
 
@@ -165,8 +169,15 @@ const RETRY_PAUSE_MS = 2_000;
  * secret is set (console.groq.com/keys). Override with the GROQ_MODEL secret.
  */
 export const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+/**
+ * Groq models tried in turn after the default, when one is rate-limited (each
+ * model has its own free allowance), retired or gives an unreadable answer.
+ */
+export const FALLBACK_GROQ_MODELS = ['meta-llama/llama-4-scout-17b-16e-instruct', 'llama-3.1-8b-instant'];
 /** Time kept back for Groq when Gemini is struggling. */
 const GROQ_RESERVE_MS = 15_000;
+/** The longest one Groq model gets (Groq usually answers in a second or two). */
+const GROQ_PER_MODEL_MS = 20_000;
 
 /** The longest one model gets before the next is tried. */
 const PER_MODEL_TIMEOUT_MS = 20_000;
@@ -187,22 +198,26 @@ export interface GeminiOptions {
   budgetMs?: number;
 }
 
-/** Asks Gemini to sort the text, trying the fallback models in turn. `fetchImpl` is for tests. */
+/**
+ * Asks Gemini to sort the text, trying the fallback models in turn, then Groq
+ * when a Groq key is set. `fetchImpl` is for tests.
+ */
 export function sortWithGemini(text: string, sourceUrl: string, options: GeminiOptions = {}): Promise<ImportedRecipe> {
   return askGemini(
     (thinking) => geminiRequest(text.slice(0, MAX_TEXT_LENGTH), { thinking }),
-    (answer) => recipeFromAnswer(answer, sourceUrl),
+    (answer, by) => recipeFromAnswer(answer, sourceUrl, by),
     options,
   );
 }
 
 /**
- * Sends one request to Gemini, trying the fallback models in turn, and reads
- * the answer with `parse`. `request(false)` must leave out the thinking setting.
+ * Sends one request to Gemini, trying the fallback models in turn, then the
+ * Groq models when a Groq key is set, and reads the answer with `parse` (told
+ * which AI answered). `request(false)` must leave out the thinking setting.
  */
 export async function askGemini<T>(
   request: (thinking: boolean) => unknown,
-  parse: (answer: string) => T,
+  parse: (answer: string, by: AiName) => T,
   options: GeminiOptions = {},
 ): Promise<T> {
   const { apiKey, model = DEFAULT_GEMINI_MODEL, fetchImpl = fetch, groqApiKey, retryPauseMs = RETRY_PAUSE_MS } = options;
@@ -255,7 +270,7 @@ export async function askGemini<T>(
     const answer = body?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
     if (!answer) throw new TryNextModel(`no answer (${body?.candidates?.[0]?.finishReason ?? 'no candidates'})`);
     try {
-      return parse(answer);
+      return parse(answer, 'Gemini');
     } catch (e) {
       // An answer in the wrong shape: another model may do better.
       if (e instanceof AiSortError && e.code === 'failed') throw new TryNextModel(`unreadable answer (${e.message})`.slice(0, 300));
@@ -285,17 +300,33 @@ export async function askGemini<T>(
     }
   }
   if (groqApiKey) {
-    try {
-      return parse(await askGroq(request(true), { apiKey: groqApiKey, model: options.groqModel, fetchImpl, ms: budget + 5_000 - (Date.now() - started) }));
-    } catch (e) {
-      if (e instanceof AiSortError) throw e;
-      problems.push(`groq: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200));
+    // Groq gets what's left of the time, plus a little: the app waits longer than this.
+    const end = started + budget + 5_000;
+    const groqModels = [...new Set([options.groqModel || DEFAULT_GROQ_MODEL, DEFAULT_GROQ_MODEL, ...FALLBACK_GROQ_MODELS])];
+    for (const name of groqModels) {
+      const left = end - Date.now();
+      if (left < 4_000) break;
+      let answer: string;
+      try {
+        answer = await askGroq(request(true), { apiKey: groqApiKey, model: name, fetchImpl, ms: Math.min(GROQ_PER_MODEL_MS, left) });
+      } catch (e) {
+        const timedOut = e instanceof Error && e.name === 'TimeoutError';
+        problems.push(`groq ${name}: ${timedOut ? 'too slow' : e instanceof Error ? e.message : String(e)}`.slice(0, 200));
+        continue;
+      }
+      try {
+        return parse(answer, 'Groq');
+      } catch (e) {
+        if (!(e instanceof AiSortError) || e.code !== 'failed') throw e;
+        problems.push(`groq ${name}: unreadable answer (${e.message})`.slice(0, 200));
+      }
     }
   }
   const seconds = Math.round((Date.now() - started) / 1000);
+  const who = !groqApiKey ? 'Gemini' : apiKey ? 'Neither Gemini nor Groq' : 'Groq';
   if (problems.length && problems.every((p) => /: 429/.test(p)))
-    throw new AiSortError('The free Gemini allowance is used up for now.', 'busy');
-  throw new AiSortError(`Gemini couldn't answer after ${seconds}s (${problems.join('; ')}).`, 'failed');
+    throw new AiSortError(`The free ${groqApiKey && apiKey ? 'AI' : who} allowance is used up for now.`, 'busy');
+  throw new AiSortError(`${who} couldn't answer after ${seconds}s (${problems.join('; ')}).`, 'failed');
 }
 
 /**
@@ -330,7 +361,7 @@ export async function askGroq(
         { role: 'user', content: user },
       ],
     }),
-    signal: AbortSignal.timeout(Math.max(8_000, opts.ms ?? 30_000)),
+    signal: AbortSignal.timeout(Math.max(3_000, opts.ms ?? 30_000)),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
@@ -375,4 +406,32 @@ export async function checkGemini(options: { apiKey?: string; model?: string; fe
   const reply = await replyWith(true);
   const replyPlain = reply.status === 400 ? await replyWith(false) : undefined;
   return { model, keySet: true, lookup, reply, ...(replyPlain ? { replyPlain } : {}) };
+}
+
+/**
+ * A quick health check of the Groq setup (GET import-recipe?check=groq): looks
+ * the model up, then asks it for a one-word reply, timing both. Says nothing
+ * about the key itself.
+ */
+export async function checkGroq(options: { apiKey?: string; model?: string; fetchImpl?: typeof fetch } = {}) {
+  const { apiKey, model = DEFAULT_GROQ_MODEL, fetchImpl = fetch } = options;
+  if (!apiKey) return { model, keySet: false };
+  const timed = async (url: string, init: RequestInit) => {
+    const started = Date.now();
+    try {
+      const res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(20_000) });
+      const text = await res.text();
+      return { status: res.status, ms: Date.now() - started, body: text.slice(0, 400) };
+    } catch (e) {
+      return { ms: Date.now() - started, error: e instanceof Error ? `${e.name}: ${e.message}` : String(e) };
+    }
+  };
+  const headers = { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` };
+  const lookup = await timed(`https://api.groq.com/openai/v1/models/${encodeURIComponent(model)}`, { headers });
+  const reply = await timed('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ model, max_tokens: 10, messages: [{ role: 'user', content: 'Reply with the word ok.' }] }),
+  });
+  return { model, keySet: true, lookup, reply };
 }
