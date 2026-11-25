@@ -68,14 +68,16 @@ export function pageText(html: string): string {
  * data's own numbers where it had them.
  */
 export function withPageDetails(ai: ImportedRecipe, page: ImportedRecipe | null, sourceUrl: string): ImportedRecipe {
+  // A translated recipe keeps the AI's English words, not the page's own.
+  const translated = !!ai.translatedFrom;
   return {
     ...ai,
     title: ai.title && ai.title !== 'Pasted recipe' ? ai.title : (page?.title ?? ai.title),
-    description: page?.description ?? ai.description,
+    description: translated ? (ai.description ?? page?.description) : (page?.description ?? ai.description),
     servings: page?.servings ?? ai.servings,
     prepMinutes: page?.prepMinutes ?? ai.prepMinutes,
     cookMinutes: page?.cookMinutes ?? ai.cookMinutes,
-    tags: page?.tags ?? ai.tags,
+    tags: translated ? ai.tags : (page?.tags ?? ai.tags),
     imageUrl: page?.imageUrl ?? ai.imageUrl,
     sourceUrl: page?.sourceUrl || sourceUrl,
     foundBy: 'ai',

@@ -25,7 +25,7 @@ import {
 import { recipePhotos, unusedPhotos } from '@/src/photos/paths';
 import { discardPhotos } from '@/src/photos/photoStore';
 import { findPhotoFor, type AutoPhoto } from '@/src/import/autoPhoto';
-import { clearPendingImport, peekPendingImport } from '@/src/state/pendingImport';
+import { clearPendingImport, peekPendingImport, peekPendingOriginal } from '@/src/state/pendingImport';
 import { useCatalog, useRecipeMap, useStore } from '@/src/state/store';
 
 const hostOf = (url: string) => {
@@ -38,12 +38,14 @@ const hostOf = (url: string) => {
 
 /** Add a recipe (no id) or edit one (?id=...). */
 export default function EditRecipeScreen() {
-  const { id, imported, sortedBy, aiName, aiNote } = useLocalSearchParams<{
+  const { id, imported, sortedBy, aiName, aiNote, translatedFrom } = useLocalSearchParams<{
     id?: string;
     imported?: string;
     sortedBy?: string;
     aiName?: string;
     aiNote?: string;
+    /** The language the AI translated the import from, when it wasn't English. */
+    translatedFrom?: string;
   }>();
   const { state, dispatch } = useStore();
   const existing = useRecipeMap().get(id ?? '');
@@ -59,6 +61,9 @@ export default function EditRecipeScreen() {
     () => (existing ? draftFromRecipe(existing, catalog) : fromImport) ?? emptyDraft(state.settings.householdSize),
   );
   const [errors, setErrors] = useState<DraftErrors | null>(null);
+  // The untranslated text of a translated paste, caption or photo, shown on request.
+  const original = fromImport && translatedFrom ? peekPendingOriginal() : null;
+  const [showOriginal, setShowOriginal] = useState(false);
   // An imported recipe without a photo gets one picked by AI from free photo
   // libraries. It only fills an empty photo the person hasn't touched.
   const [autoPhoto, setAutoPhoto] = useState<AutoPhoto | 'looking' | null>(null);
@@ -168,13 +173,44 @@ export default function EditRecipeScreen() {
               {pasted
                 ? 'Check each line landed in the right place: ingredients, steps and notes. '
                 : 'Check the ingredients and steps. '}
-              Pick US cups and spoons below if it's an American recipe. Nothing is saved until you press Save.
+              Nothing is saved until you press Save.
             </Text>
             {sortedBy ? (
               <Text variant="muted">
                 {sortedBy === 'ai'
                   ? `Sorted by AI (${aiName || 'Gemini'}).`
                   : `${pasted ? 'Sorted by the app’s built-in rules' : 'Read from the page’s recipe card'}. AI wasn’t used: ${aiNote || 'not available.'}`}
+              </Text>
+            ) : null}
+            {translatedFrom ? (
+              <Text variant="muted">
+                {`Translated from ${translatedFrom} into English. `}
+                {original ? 'Check it against the original below.' : draft.sourceUrl ? `The original is at ${hostOf(draft.sourceUrl)}.` : ''}
+              </Text>
+            ) : null}
+            {original ? (
+              <RNView style={styles.row}>
+                <Button
+                  title={showOriginal ? 'Hide original' : `Show original (${translatedFrom})`}
+                  small
+                  kind="secondary"
+                  onPress={() => setShowOriginal((v) => !v)}
+                  style={styles.grow}
+                />
+                {draft.notes.includes(original) ? null : (
+                  <Button
+                    title="Keep original in notes"
+                    small
+                    kind="secondary"
+                    onPress={() => set({ notes: [draft.notes.trim(), `Original (${translatedFrom}):\n${original}`].filter(Boolean).join('\n\n') })}
+                    style={styles.grow}
+                  />
+                )}
+              </RNView>
+            ) : null}
+            {original && showOriginal ? (
+              <Text selectable style={styles.original}>
+                {original}
               </Text>
             ) : null}
           </Card>
@@ -658,4 +694,5 @@ const styles = StyleSheet.create({
     fontSize: 26,
   },
   plainInput: { borderWidth: 0, backgroundColor: 'transparent', paddingHorizontal: 2 },
+  original: { fontSize: 14, lineHeight: 20 },
 });

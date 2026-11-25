@@ -38,7 +38,9 @@ export class AiSortError extends Error {
 export const INSTRUCTIONS = `You sort recipe text into a recipe for a cookbook app. The text was copied from an Instagram caption, a website, a note, or read from a photo of a cookbook page, so it may contain emoji, hashtags, promotion, nutrition macros, calls to follow or save the post, broken lines and words misread from a photo.
 
 Rules:
-- Copy ingredient lines and steps as written. Don't change amounts or units, don't convert measures, don't invent anything that isn't in the text.
+- language: the language the recipe text is written in, named in English ("English", "Spanish", "Urdu", "Japanese"...). Ignore a few foreign dish names in English text: that's still "English".
+- If the recipe isn't in English, translate everything you return (title, description, ingredients, headings, steps and notes) into natural Australian English. Keep every number exactly as written. Write unit words as short English units (cucharada → tbsp, cucharadita → tsp, taza → cup, gramos → g, EL → tbsp, TL → tsp), and keep metric units as they are. Use the names Australian shops use (coriander, capsicum, spring onion, plain flour, caster sugar, mince). Keep a well-known dish name as it is in the title (e.g. "Chicken karahi", "Pollo al ajillo (garlic chicken)").
+- Copy ingredient lines and steps as written (translated when the text isn't in English). Don't change amounts or units, don't convert measures, don't invent anything that isn't in the text.
 - One ingredient per line, amount first where the text has one ("200g chicken thigh", "2 tbsp soy sauce", "Salt, to taste"). Split lines that list several ingredients. Join an ingredient that was broken over two lines. Fix obvious photo misreads only when certain (e.g. "1OOg" is "100g").
 - If the recipe has parts (e.g. "For the sauce", "Marinade", "Chicken"), make one ingredient group per part, with the part name as the heading. Use no heading for a single list.
 - Steps go in method groups, in order, without step numbers, bullets or emoji. Give a group a heading only when the text splits the method into parts (e.g. "Sauce", "Assembly", "Storage & reheating").
@@ -56,6 +58,7 @@ const NULLABLE_INT = { type: 'INTEGER', nullable: true };
 export const RESPONSE_SCHEMA = {
   type: 'OBJECT',
   properties: {
+    language: STRING,
     title: STRING,
     description: STRING,
     servings: NULLABLE_INT,
@@ -79,8 +82,8 @@ export const RESPONSE_SCHEMA = {
     },
     notes: { type: 'ARRAY', items: STRING },
   },
-  required: ['title', 'description', 'servings', 'prepMinutes', 'cookMinutes', 'ingredientGroups', 'methodGroups', 'notes'],
-  propertyOrdering: ['title', 'description', 'servings', 'prepMinutes', 'cookMinutes', 'ingredientGroups', 'methodGroups', 'notes'],
+  required: ['language', 'title', 'description', 'servings', 'prepMinutes', 'cookMinutes', 'ingredientGroups', 'methodGroups', 'notes'],
+  propertyOrdering: ['language', 'title', 'description', 'servings', 'prepMinutes', 'cookMinutes', 'ingredientGroups', 'methodGroups', 'notes'],
 };
 
 /** How long the helper waits for Gemini. Supabase lets a function run for 150 seconds. */
@@ -136,6 +139,7 @@ export function recipeFromAnswer(answer: string, sourceUrl = '', aiName?: AiName
     .filter((g) => g.steps.length);
 
   const servings = minutes(data.servings);
+  const translatedFrom = translatedLanguage(data.language);
   return {
     title: str(data.title) || 'Pasted recipe',
     description: str(data.description).slice(0, 500) || undefined,
@@ -149,7 +153,15 @@ export function recipeFromAnswer(answer: string, sourceUrl = '', aiName?: AiName
     sourceUrl,
     foundBy: 'ai',
     ...(aiName ? { aiName } : {}),
+    ...(translatedFrom ? { translatedFrom } : {}),
   };
+}
+
+/** The AI's language name when it isn't English ("spanish" → "Spanish"), else undefined. */
+export function translatedLanguage(v: unknown): string | undefined {
+  const name = str(v).replace(/[^\p{L} ()-]/gu, '').trim().slice(0, 40);
+  if (!name || /^(english|en|unknown|none|na|n a)$/i.test(name)) return undefined;
+  return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 /**

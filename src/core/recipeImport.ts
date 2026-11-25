@@ -44,6 +44,8 @@ export interface ImportedRecipe {
   aiNote?: string;
   /** Which AI sorted it ('Gemini' or 'Groq'), when foundBy is 'ai'. */
   aiName?: string;
+  /** The language the AI translated the recipe from ("Spanish"), when it wasn't in English. */
+  translatedFrom?: string;
   /** Which method found it, for troubleshooting. */
   foundBy: 'json-ld' | 'recipe-card' | 'microdata' | 'headings' | 'pasted' | 'ai';
 }

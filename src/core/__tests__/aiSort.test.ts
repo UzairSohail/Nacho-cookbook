@@ -429,3 +429,31 @@ describe('Gemini model fallback', () => {
     await expect(sortWithGemini('x', '', { groqApiKey: 'g', fetchImpl: down })).rejects.toMatchObject({ code: 'busy' });
   });
 });
+
+describe('translating recipes that are not in English', () => {
+  it('asks the AI for the language and to translate into English', () => {
+    const body = geminiRequest('Pollo al ajillo') as { systemInstruction: { parts: { text: string }[] }; generationConfig: { responseSchema: { required: string[] } } };
+    expect(body.systemInstruction.parts[0].text).toMatch(/translate everything/i);
+    expect(body.generationConfig.responseSchema.required).toContain('language');
+  });
+
+  it('marks a recipe the AI translated', () => {
+    const r = recipeFromAnswer(JSON.stringify({ ...answer, language: 'spanish' }), '', 'Gemini');
+    expect(r.translatedFrom).toBe('Spanish');
+  });
+
+  it("doesn't mark English recipes or missing languages", () => {
+    for (const language of ['English', 'english', 'en', '', 'unknown', undefined]) {
+      expect(recipeFromAnswer(JSON.stringify({ ...answer, language })).translatedFrom).toBeUndefined();
+    }
+  });
+
+  it("keeps the AI's English description and drops the page's own-language tags", () => {
+    const page = { ...recipeFromAnswer(JSON.stringify(answer)), description: 'Un plato clásico.', tags: ['cena'], foundBy: 'json-ld' as const };
+    const ai = { ...recipeFromAnswer(JSON.stringify(answer)), description: 'A classic dish.', translatedFrom: 'Spanish' };
+    const r = withPageDetails(ai, page, 'https://receta.test/');
+    expect(r.description).toBe('A classic dish.');
+    expect(r.tags).toEqual([]);
+    expect(r.translatedFrom).toBe('Spanish');
+  });
+});
